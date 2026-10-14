@@ -1,4 +1,5 @@
 /* Perplexity (perplexity.ai). URL /search/<slug> (known pattern; slug = title words + id); selectors GUESSES. */
+try {
 GF.registerAdapter(GF.makeAdapter({
   id: "perplexity", label: "Perplexity", badge: { text: "Px", color: "#20808d" },
   hosts: ["www.perplexity.ai", "perplexity.ai"],
@@ -9,3 +10,4 @@ GF.registerAdapter(GF.makeAdapter({
   tabTitleRe: /\s*[-|–]\s*Perplexity(\s+AI)?\s*$/i,     // GUESS
   placeholders: /^(perplexity|perplexity ai|new thread|untitled)$/i // GUESS
 }));
+} catch (e) { console.error("[AI Folders] adapter failed to load: perplexity.js", e); }

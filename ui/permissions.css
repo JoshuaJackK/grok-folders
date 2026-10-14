@@ -1,0 +1,6 @@
+body{font:15px/1.5 system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 16px;color:#222}
+@media (prefers-color-scheme:dark){body{background:#1c1b22;color:#eee}}
+table{border-collapse:collapse;margin:12px 0}td{padding:4px 12px 4px 0}
+.ok{color:#2e9e5b;font-weight:600}.no{color:#e5484d;font-weight:600}
+button{font-size:15px;padding:8px 16px;border-radius:6px;cursor:pointer}
+.hint{color:#888;font-size:13px}

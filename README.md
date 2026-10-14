@@ -67,6 +67,12 @@ Selektorji v `content/adapters/grok.js` (`a[href^="/c/"]`, naslov) **niso prever
 - Za razvoj nastavi v `about:config`: `extensions.webextensions.keepStorageOnUninstall = true` (in `keepUuidOnUninstall = true`).
 - Pred posodobitvijo naredi **Export**.
 
+## Dostop do strani (host permissions)
+V Firefoxu MV3 je dostop do strani **izbiren**: ob posodobitvi se nove strani ne odobrijo samodejno in brez dostopa se vsebinski skript ne naloži (ni gumba 📁). Zato:
+- ob namestitvi/posodobitvi se, če kakšna stran manjka, odpre stran `ui/permissions.html` s stanjem in gumbom **Grant access**;
+- gumb razširitve v orodni vrstici (z rdečim „!“, če kaj manjka) zahteva manjkajoči dostop; ko je vse odobreno, odpre stran s stanjem;
+- ročno: `about:addons` → AI Folders → Permissions. Po odobritvi znova naloži odprte zavihke.
+
 ## Namestitev (about:debugging)
 1. Firefox ≥ 115 → `about:debugging#/runtime/this-firefox`
 2. „Load Temporary Add-on…“ → izberi `manifest.json` v tej mapi.
@@ -81,6 +87,6 @@ Lint: `npx web-ext lint` · Zagon: `npx web-ext run`
 2. Ob prvem zagonu zahtevati host permission (`permissions.request`), če ni odobren.
 4. Sporočanje stanja in konflikti pri sync: merge po `ts` namesto „zadnji zapis zmaga“; preklop nazaj iz local v sync.
 5. Stran z nastavitvami.
-6. Testi: `node tests/import.test.js`, `node tests/move.test.js`, `node tests/tags.test.js`, `node tests/ui.test.js`, `node tests/titles.test.js`, `node tests/adapters.test.js` (jsdom); dodati še `encode/decode/chunk`.
+6. Testi: `node tests/import.test.js`, `node tests/move.test.js`, `node tests/tags.test.js`, `node tests/ui.test.js`, `node tests/titles.test.js`, `node tests/adapters.test.js`, `node tests/permissions.test.js` (jsdom); dodati še `encode/decode/chunk`.
 7. Adapterji za druge ponudnike (ChatGPT, Claude) prek istega vmesnika.
 8. Zamenjava `prompt/confirm` z lastnimi dialogi v shadow DOM; i18n (`_locales`).

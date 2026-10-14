@@ -30,7 +30,8 @@
     "scripts": [
       "shared/constants.js",
       "background/storage.js",
-      "background/background.js"
+      "background/background.js",
+      "background/permissions.js"
     ]
   },
   "content_scripts": [
@@ -61,5 +62,12 @@
   "icons": {
     "48": "icons/icon.svg",
     "96": "icons/icon.svg"
+  },
+  "action": {
+    "default_title": "AI Folders",
+    "default_icon": {
+      "48": "icons/icon.svg",
+      "96": "icons/icon.svg"
+    }
   }
 }

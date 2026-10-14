@@ -1,5 +1,6 @@
 /* Gemini (gemini.google.com). URLs /app/<id> and /u/<n>/app/<id> (multi-account); selectors GUESSES.
  * Note: Gemini's tab title is usually just "Gemini" -> titles come mainly from the sidebar list. */
+try {
 GF.registerAdapter(GF.makeAdapter({
   id: "gemini", label: "Gemini", badge: { text: "Gm", color: "#4c8df6" },
   hosts: ["gemini.google.com"],
@@ -10,3 +11,4 @@ GF.registerAdapter(GF.makeAdapter({
   tabTitleRe: /\s*[-|–]\s*(Google\s+)?Gemini\s*$/i,      // GUESS
   placeholders: /^(gemini|google gemini|new chat|conversation with gemini|untitled)$/i // GUESS
 }));
+} catch (e) { console.error("[AI Folders] adapter failed to load: gemini.js", e); }
