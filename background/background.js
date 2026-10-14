@@ -38,7 +38,7 @@ const cleanTagName = (n) => { const s = String(n || "").trim().slice(0, 30); if 
 const findTag = (st, name) => Object.values(st.tags || {}).find(t => t.name.toLowerCase() === name.trim().toLowerCase());
 
 async function broadcast() {
-  const tabs = await browser.tabs.query({ url: "https://grok.com/*" });
+  const tabs = await browser.tabs.query({ url: GF.HOST_MATCHES });
   for (const t of tabs) browser.tabs.sendMessage(t.id, { type: M.STATE_CHANGED, state: S.get(), mode: S.getMode() }).catch(() => {});
 }
 

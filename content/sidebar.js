@@ -1,4 +1,4 @@
-/* Sidebar UI inside a closed shadow root (style isolation from grok.com). No innerHTML. */
+/* Sidebar UI inside a closed shadow root (style isolation from the host site). No innerHTML. */
 var GF = globalThis.GF;
 /* Position tweaks: toggle button sits top-left next to Grok's own menu/logo. */
 const GF_POS = {
@@ -17,7 +17,7 @@ GF.Sidebar = class {
   constructor(adapter, api) {
     this.adapter = adapter; this.api = api;
     this.state = { folders: {}, convs: {}, tags: {} }; this.mode = "sync";
-    this.query = ""; this.tagFilter = null; this.collapsed = new Set(); this.selected = null;
+    this.query = ""; this.tagFilter = null; this.providerFilter = null; this.collapsed = new Set(); this.selected = null;
     this.layer = document.createElement("div"); // modal layer, survives re-renders
     this.live = null;                              // refresh fn of an open live modal
     const host = document.createElement("div");
@@ -36,7 +36,7 @@ GF.Sidebar = class {
     const style = document.createElement("style");
     style.textContent = GF.Sidebar.CSS;
     this.root.appendChild(style);
-    this.toggle = this.el("button", { className: "toggle", title: "Grok Folders", textContent: "📁" });
+    this.toggle = this.el("button", { className: "toggle", title: "AI Folders", textContent: "📁" });
     this.panel = this.el("div", { className: "panel" });
     this.root.append(this.toggle, this.panel);
     this.pos = { left: GF_POS.left, top: GF_POS.top };
@@ -153,23 +153,26 @@ GF.Sidebar = class {
     if (this.tagFilter && !this.state.tags[this.tagFilter]) this.tagFilter = null;
     this.mode = mode || this.mode; this.render(); if (this.live) this.preserving(this.live);
   }
-  async call(type, payload) { const r = await this.api(type, payload); if (!r.ok) alert("Grok Folders: " + r.error); return r; }
+  async call(type, payload) { const r = await this.api(type, payload); if (!r.ok) alert("AI Folders: " + r.error); return r; }
 
   children(pid) { return Object.values(this.state.folders).filter(f => f.parentId === pid).sort((a, b) => a.order - b.order || a.name.localeCompare(b.name)); }
   convsIn(fid) { return Object.values(this.state.convs).filter(c => c.folderId === fid).sort((a, b) => (a.order || 0) - (b.order || 0) || a.title.localeCompare(b.title)); }
-  /* Search matches titles, folder names and tag names; tag filter narrows to tagged items. */
+  /* Search matches titles, folder names and tag names; tag/provider filters narrow the result. */
+  filtering() { return !!(this.query || this.tagFilter || this.providerFilter); }
   tagNames(x) { return (x.tags || []).map(id => (this.state.tags[id] || {}).name || "").join(" ").toLowerCase(); }
   hasFilterTag(x) { return !this.tagFilter || (x.tags || []).includes(this.tagFilter); }
   textHit(x, text) { const q = this.query.toLowerCase(); return !q || text.toLowerCase().includes(q) || this.tagNames(x).includes(q); }
-  folderSelfMatch(f) { return (this.query || this.tagFilter) && this.textHit(f, f.name) && this.hasFilterTag(f); }
+  folderSelfMatch(f) { return !!(this.query || this.tagFilter) && this.textHit(f, f.name) && this.hasFilterTag(f); }
   convMatch(c, f) {
+    if (this.providerFilter && c.provider !== this.providerFilter) return false;
     if (!this.query && !this.tagFilter) return true;
     if (this.folderSelfMatch(f)) return true;
     return this.textHit(c, c.title || "") && this.hasFilterTag(c);
   }
   matchesSearch(f) {
-    if (!this.query && !this.tagFilter) return true;
-    return this.folderSelfMatch(f) || this.convsIn(f.id).some(c => this.convMatch(c, f)) || this.children(f.id).some(ch => this.matchesSearch(ch));
+    if (!this.filtering()) return true;
+    const self = this.folderSelfMatch(f) && (!this.providerFilter || this.convsIn(f.id).some(c => this.convMatch(c, f)));
+    return self || this.convsIn(f.id).some(c => this.convMatch(c, f)) || this.children(f.id).some(ch => this.matchesSearch(ch));
   }
   render() {
     const M = GF.MSG;
@@ -180,6 +183,10 @@ GF.Sidebar = class {
       this.el("option", { value: "", textContent: "All tags" }),
       ...Object.values(this.state.tags).sort((a, b) => a.name.localeCompare(b.name)).map(t => this.el("option", { value: t.id, textContent: "# " + t.name, selected: t.id === this.tagFilter })));
     tf.onchange = () => { this.tagFilter = tf.value || null; this.render(); };
+    const pf = this.el("select", { className: "tagsel", title: "Filter by AI" },
+      this.el("option", { value: "", textContent: "All AIs" }),
+      ...GF.adapters.map(a => this.el("option", { value: a.id, textContent: a.label, selected: a.id === this.providerFilter })));
+    pf.onchange = () => { this.providerFilter = pf.value || null; this.render(); };
     const tagsBtn = this.el("button", { textContent: "Tags", title: "Manage tags" });
     tagsBtn.onclick = () => this.manageTags();
     search.oninput = () => { this.query = search.value; this.renderTree(); };
@@ -195,7 +202,7 @@ GF.Sidebar = class {
     file.onchange = () => { const f = file.files[0]; file.value = ""; if (f) this.importJson(f); };
     this.tree = this.el("div", { className: "tree" });
     const footer = this.el("div", { className: "footer", textContent: "storage: " + this.mode });
-    this.panel.replaceChildren(this.el("div", { className: "head" }, this.el("b", { textContent: "Grok Folders" })), this.el("div", { className: "row" }, search, tf), this.el("div", { className: "row" }, newRoot, addCur), this.el("div", { className: "row" }, exp, imp, tagsBtn, file), this.tree, footer, this.layer);
+    this.panel.replaceChildren(this.el("div", { className: "head" }, this.el("b", { textContent: "AI Folders" })), this.el("div", { className: "row" }, search), this.el("div", { className: "row" }, tf, pf), this.el("div", { className: "row" }, newRoot, addCur), this.el("div", { className: "row" }, exp, imp, tagsBtn, file), this.tree, footer, this.layer);
     this.renderTree();
     this.restoreFocus(snap);
   }
@@ -205,7 +212,7 @@ GF.Sidebar = class {
     const nodes = build(null, 0);
     const rootZone = this.el("div", { className: "rootzone", textContent: "⤒ Top level (drop folder here)" });
     this.dropTarget(rootZone, () => "root", (e) => this.handleDrop(e, { type: "root" }));
-    this.tree.replaceChildren(rootZone, ...(nodes.length ? nodes : [this.el("div", { className: "empty", textContent: this.query ? "No matches" : "No folders yet" })]));
+    this.tree.replaceChildren(rootZone, ...(nodes.length ? nodes : [this.el("div", { className: "empty", textContent: this.filtering() ? "No matches" : "No folders yet" })]));
   }
 
   /* ---- Drag & drop inside the tree ----
@@ -243,7 +250,7 @@ GF.Sidebar = class {
 
   folderNode(f, depth, build) {
     const M = GF.MSG;
-    const open = !this.collapsed.has(f.id) || !!this.query || !!this.tagFilter;
+    const open = !this.collapsed.has(f.id) || this.filtering();
     const caret = this.el("span", { className: "caret", textContent: open ? "▾" : "▸" });
     caret.onclick = (e) => { e.stopPropagation(); this.toggleCollapsed(f.id, !this.collapsed.has(f.id)); };
     const btn = (t, title, fn) => { const b = this.el("button", { className: "mini", textContent: t, title }); b.onclick = (e) => { e.stopPropagation(); fn(); }; return b; };
@@ -272,8 +279,11 @@ GF.Sidebar = class {
     if (open) {
       for (const c of this.convsIn(f.id)) {
         if (!this.convMatch(c, f)) continue;
-        const a = this.el("a", { className: "conv", href: this.adapter.conversationUrl(c.convId), title: c.title },
-          this.el("span", { className: "name", textContent: "💬 " + (c.title || c.convId) }), this.chips(c));
+        const prov = GF.adapterById(c.provider);
+        const badge = this.el("span", { className: "badge", textContent: prov ? prov.badge.text : c.provider.slice(0, 3), title: prov ? prov.label : c.provider });
+        if (prov) badge.style.background = prov.badge.color;
+        const a = this.el("a", { className: "conv", href: prov ? prov.conversationUrl(c.convId) : "#", title: (prov ? prov.label + ": " : "") + c.title },
+          badge, this.el("span", { className: "name", textContent: c.title || c.convId }), this.chips(c));
         const tg = this.el("button", { className: "mini", textContent: "#", title: "Tags" });
         tg.onclick = (e) => { e.preventDefault(); e.stopPropagation(); this.editTags("conv", c.key, c.tags); };
         a.append(tg);
@@ -282,7 +292,8 @@ GF.Sidebar = class {
         a.addEventListener("click", (e) => {
           if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
           e.preventDefault();
-          this.adapter.navigate(c.convId);
+          if (c.provider === this.adapter.id) this.adapter.navigate(c.convId);      // same site: in-app navigation
+          else if (prov) window.open(prov.conversationUrl(c.convId), "_blank", "noopener"); // other AI: new tab
         });
         const x = this.el("button", { className: "mini", textContent: "✕", title: "Remove from folder" });
         x.onclick = (e) => { e.preventDefault(); e.stopPropagation(); this.call(M.UNASSIGN_CONV, { key: c.key }); };
@@ -319,20 +330,20 @@ GF.Sidebar = class {
       if (drag.id === target.key) return;
       return this.call(M.MOVE_CONV, { key: drag.id, folderId, ...pos });
     }
-    // External drop: Grok page conversation link.
+    // External drop: a conversation link from this page (enriched in content.js) or any supported AI URL.
     let info = null;
     const custom = dt.getData("application/x-gf-conv");
-    if (custom) { try { info = JSON.parse(custom); } catch (_) { info = null; } }
+    if (custom) { try { info = { provider: this.adapter.id, ...JSON.parse(custom) }; } catch (_) { info = null; } }
     if (!info) {
       const url = (dt.getData("text/uri-list") || dt.getData("text/plain") || "").split("\n")[0].trim();
-      try {
-        const u = new URL(url, location.origin);
-        const a = document.querySelector(`a[href="${CSS.escape(u.pathname)}"]`) || Object.assign(document.createElement("a"), { href: u.href });
-        info = this.adapter.parseConvLink(a);
-      } catch (_) { /* not a URL */ }
+      const parsed = GF.parseAnyUrl(url);
+      if (parsed) {
+        const same = parsed.provider === this.adapter.id && this.adapter.pageLinks().find(a => this.adapter.linkId(a) === parsed.convId);
+        info = { ...parsed, title: same ? this.adapter.parseConvLink(same).title : parsed.convId };
+      }
     }
     if (!info) return;
-    await this.call(M.ASSIGN_CONV, { provider: this.adapter.id, convId: info.convId, title: info.title, folderId, ...pos });
+    await this.call(M.ASSIGN_CONV, { provider: info.provider, convId: info.convId, title: info.title, folderId, ...pos });
   }
 
   /* ---- JSON export / import ---- */
@@ -355,7 +366,7 @@ GF.Sidebar = class {
     let data;
     try { data = JSON.parse(await file.text()); } catch (e) { return this.dialog("Invalid JSON: " + e.message, [["OK", null]]); }
     if (!data || data.app !== "grok-folders" || !Array.isArray(data.folders) || !Array.isArray(data.conversations))
-      return this.dialog("This is not a Grok Folders export file.", [["OK", null]]);
+      return this.dialog("This is not an AI Folders export file.", [["OK", null]]);
     const mode = await this.dialog(
       `Import ${data.folders.length} folders and ${data.conversations.length} conversations from "${file.name}".\n` +
       "Replace: delete current data first. Merge: keep existing, add only new folders/conversations (safe to repeat).",
@@ -531,7 +542,8 @@ button{background:#2b2b2b;color:#eee;border:1px solid #444;border-radius:6px;pad
 .taglist{display:flex;flex-direction:column;gap:3px;max-height:200px;overflow:auto}
 .tagrow{display:flex;align-items:center;gap:6px}.tagrow input:not([type]){flex:1;padding:2px 6px}
 .cnt{color:#888;font-size:11px;min-width:16px;text-align:right}
-select.tagsel{max-width:40%;background:#111;color:#eee;border:1px solid #444;border-radius:6px}
+select.tagsel{flex:1;min-width:0;background:#111;color:#eee;border:1px solid #444;border-radius:6px}
 .conv .name{flex:1;overflow:hidden;text-overflow:ellipsis}
+.badge{flex:none;font-size:9px;line-height:13px;padding:0 3px;margin-right:4px;border-radius:3px;color:#fff;background:#666;font-weight:600}
 .empty,.footer{color:#888;font-size:11px;padding:4px}
 `;

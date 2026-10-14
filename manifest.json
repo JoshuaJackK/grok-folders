@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Grok Folders",
+  "name": "AI Folders",
   "version": "0.3.2",
-  "description": "Organize grok.com conversations into nested folders.",
+  "description": "Organize AI chat conversations (Grok, ChatGPT, Claude, Gemini, Perplexity) into nested folders with tags.",
   "browser_specific_settings": {
     "gecko": {
       "id": "grok-folders@joshuajackk.github.io",
@@ -19,7 +19,12 @@
     "storage"
   ],
   "host_permissions": [
-    "https://grok.com/*"
+    "https://grok.com/*",
+    "https://chatgpt.com/*",
+    "https://claude.ai/*",
+    "https://gemini.google.com/*",
+    "https://www.perplexity.ai/*",
+    "https://perplexity.ai/*"
   ],
   "background": {
     "scripts": [
@@ -31,12 +36,21 @@
   "content_scripts": [
     {
       "matches": [
-        "https://grok.com/*"
+        "https://grok.com/*",
+        "https://chatgpt.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*",
+        "https://www.perplexity.ai/*",
+        "https://perplexity.ai/*"
       ],
       "js": [
         "shared/constants.js",
         "content/adapters/base.js",
         "content/adapters/grok.js",
+        "content/adapters/chatgpt.js",
+        "content/adapters/claude.js",
+        "content/adapters/gemini.js",
+        "content/adapters/perplexity.js",
         "content/sidebar.js",
         "content/titles.js",
         "content/content.js"

@@ -27,3 +27,5 @@ GF.colorIndex = (c) => {
   return 0;
 };
 GF.TITLE_MAX = 80; // stored title length (storage.sync quota)
+/* Supported sites (keep in sync with manifest host_permissions / content_scripts.matches). */
+GF.HOST_MATCHES = ["https://grok.com/*", "https://chatgpt.com/*", "https://claude.ai/*", "https://gemini.google.com/*", "https://www.perplexity.ai/*", "https://perplexity.ai/*"];

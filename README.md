@@ -1,6 +1,18 @@
-# Grok Folders (Firefox, MVP)
+# AI Folders (Firefox) – prej „Grok Folders“
 
-Razširitev za Firefox (Manifest V3), ki pogovore na grok.com razvrsti v mape z neomejenim gnezdenjem.
+Razširitev za Firefox (Manifest V3), ki pogovore z AI asistenti razvrsti v **eno skupno drevo map** (po temah) z neomejenim gnezdenjem.
+
+Podprte strani (vsaka ima svoj adapter v `content/adapters/`):
+
+| Ponudnik | Gostitelj | URL pogovora | Značka |
+|---|---|---|---|
+| Grok | grok.com | `/c/<id>` | Gk |
+| ChatGPT | chatgpt.com | `/c/<id>`, `/g/<gpt>/c/<id>` | GPT |
+| Claude | claude.ai | `/chat/<uuid>` | Cl |
+| Gemini | gemini.google.com | `/app/<id>`, `/u/<n>/app/<id>` | Gm |
+| Perplexity | www.perplexity.ai | `/search/<slug>` | Px |
+
+⚠️ Vzorci URL so preverjeni po javnih virih; **selektorji, formati naslovov zavihkov in nadomestni naslovi so ugibanja** (označeno v vsakem adapterju). Klik na pogovor iste strani = navigacija znotraj aplikacije; pogovor drugega ponudnika se odpre v novem zavihku. Filter „All AIs“ omeji prikaz na enega ponudnika. Gecko id ostaja `grok-folders@joshuajackk.github.io`.
 
 ## Funkcije (MVP)
 - Gumb 📁 lahko premakneš z miško (položaj se shrani lokalno v `storage.local` pod `uiPos`); dvoklik ga ponastavi.
@@ -24,7 +36,7 @@ background/storage.js    model shranjevanja: kodiranje, razkosanje, migracije, f
 background/background.js EDINI lastnik shrambe; obdela sporočila, oddaja spremembe zavihkom,
                          posluša storage.onChanged (sync iz drugih naprav)
 content/adapters/base.js vmesnik ponudnika (provider adapter) + registracija
-content/adapters/grok.js adapter za grok.com (VSI Grok selektorji so tu)
+content/adapters/*.js    GF.makeAdapter (base.js) + konfiguracija za grok, chatgpt, claude, gemini, perplexity
 content/titles.js        samodejno posodabljanje naslovov (TitleWatcher)
 content/sidebar.js       UI v zaprtem shadow rootu (brez innerHTML)
 content/content.js       vstopna točka: adapter + UI + runtime.sendMessage
@@ -69,6 +81,6 @@ Lint: `npx web-ext lint` · Zagon: `npx web-ext run`
 2. Ob prvem zagonu zahtevati host permission (`permissions.request`), če ni odobren.
 4. Sporočanje stanja in konflikti pri sync: merge po `ts` namesto „zadnji zapis zmaga“; preklop nazaj iz local v sync.
 5. Stran z nastavitvami.
-6. Testi: `node tests/import.test.js`, `node tests/move.test.js`, `node tests/tags.test.js`, `node tests/ui.test.js`, `node tests/titles.test.js` (jsdom); dodati še `encode/decode/chunk`.
+6. Testi: `node tests/import.test.js`, `node tests/move.test.js`, `node tests/tags.test.js`, `node tests/ui.test.js`, `node tests/titles.test.js`, `node tests/adapters.test.js` (jsdom); dodati še `encode/decode/chunk`.
 7. Adapterji za druge ponudnike (ChatGPT, Claude) prek istega vmesnika.
 8. Zamenjava `prompt/confirm` z lastnimi dialogi v shadow DOM; i18n (`_locales`).
