@@ -12,13 +12,9 @@
     mount();
   } catch (e) { console.error("[AI Folders] failed to mount panel", e); return; }
 
-  // Enrich native drags from Grok's conversation list with id+title.
-  document.addEventListener("dragstart", (e) => {
-    const a = e.target.closest && e.target.closest(adapter.conversationLinkSelector);
-    if (!a) return;
-    const info = adapter.parseConvLink(a);
-    if (info) e.dataTransfer.setData("application/x-gf-conv", JSON.stringify(info));
-  }, true);
+  // Drag conversations from the site's own sidebar (native DnD + pointer fallback).
+  try { sidebar.pageDnD = new GF.PageDnD(adapter, sidebar); sidebar.pageDnD.start(); }
+  catch (e) { console.error("[AI Folders] page drag support failed", e); }
 
   // Re-mount if the page re-renders <html> children and drops our host.
   new MutationObserver(() => sidebar.ensureMounted()).observe(document.documentElement, { childList: true });

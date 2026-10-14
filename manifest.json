@@ -54,6 +54,7 @@
         "content/adapters/perplexity.js",
         "content/sidebar.js",
         "content/titles.js",
+        "content/dnd.js",
         "content/content.js"
       ],
       "run_at": "document_idle"

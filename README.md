@@ -37,6 +37,7 @@ background/background.js EDINI lastnik shrambe; obdela sporočila, oddaja spreme
                          posluša storage.onChanged (sync iz drugih naprav)
 content/adapters/base.js vmesnik ponudnika (provider adapter) + registracija
 content/adapters/*.js    GF.makeAdapter (base.js) + konfiguracija za grok, chatgpt, claude, gemini, perplexity
+content/dnd.js           vlečenje pogovorov iz stranske vrstice strani (native DnD v capture fazi + pointer fallback)
 content/titles.js        samodejno posodabljanje naslovov (TitleWatcher)
 content/sidebar.js       UI v zaprtem shadow rootu (brez innerHTML)
 content/content.js       vstopna točka: adapter + UI + runtime.sendMessage
@@ -87,6 +88,6 @@ Lint: `npx web-ext lint` · Zagon: `npx web-ext run`
 2. Ob prvem zagonu zahtevati host permission (`permissions.request`), če ni odobren.
 4. Sporočanje stanja in konflikti pri sync: merge po `ts` namesto „zadnji zapis zmaga“; preklop nazaj iz local v sync.
 5. Stran z nastavitvami.
-6. Testi: `node tests/import.test.js`, `node tests/move.test.js`, `node tests/tags.test.js`, `node tests/ui.test.js`, `node tests/titles.test.js`, `node tests/adapters.test.js`, `node tests/permissions.test.js` (jsdom); dodati še `encode/decode/chunk`.
+6. Testi: `node tests/import.test.js`, `node tests/move.test.js`, `node tests/tags.test.js`, `node tests/ui.test.js`, `node tests/titles.test.js`, `node tests/adapters.test.js`, `node tests/permissions.test.js`, `node tests/pagednd.test.js` (jsdom); dodati še `encode/decode/chunk`.
 7. Adapterji za druge ponudnike (ChatGPT, Claude) prek istega vmesnika.
 8. Zamenjava `prompt/confirm` z lastnimi dialogi v shadow DOM; i18n (`_locales`).

@@ -262,6 +262,7 @@ GF.Sidebar = class {
       btn("🗑", "Delete (recursive)", async () => { if (confirm(`Delete "${f.name}" with all subfolders?`)) await this.call(M.DELETE_FOLDER, { id: f.id }); }));
     label.style.paddingLeft = (4 + depth * 12) + "px";
     label.onclick = () => { this.selected = f.id; this.renderTree(); };
+    label.dataset.fid = f.id;
     this.dragSource(label, "folder", f.id);
     this.dropTarget(label,
       (e) => {
@@ -298,6 +299,7 @@ GF.Sidebar = class {
         const x = this.el("button", { className: "mini", textContent: "✕", title: "Remove from folder" });
         x.onclick = (e) => { e.preventDefault(); e.stopPropagation(); this.call(M.UNASSIGN_CONV, { key: c.key }); };
         a.append(x);
+        a.dataset.ckey = c.key; a.dataset.fid = f.id;
         this.dragSource(a, "conv", c.key);
         this.dropTarget(a,
           (e) => (this.drag && this.drag.kind === "folder") ? null : this.zone(e, a, "conv"),
@@ -330,21 +332,40 @@ GF.Sidebar = class {
       if (drag.id === target.key) return;
       return this.call(M.MOVE_CONV, { key: drag.id, folderId, ...pos });
     }
-    // External drop: a conversation link from this page (enriched in content.js) or any supported AI URL.
-    let info = null;
-    const custom = dt.getData("application/x-gf-conv");
-    if (custom) { try { info = { provider: this.adapter.id, ...JSON.parse(custom) }; } catch (_) { info = null; } }
-    if (!info) {
-      const url = (dt.getData("text/uri-list") || dt.getData("text/plain") || "").split("\n")[0].trim();
-      const parsed = GF.parseAnyUrl(url);
-      if (parsed) {
-        const same = parsed.provider === this.adapter.id && this.adapter.pageLinks().find(a => this.adapter.linkId(a) === parsed.convId);
-        info = { ...parsed, title: same ? this.adapter.parseConvLink(same).title : parsed.convId };
-      }
-    }
-    if (!info) return;
-    await this.call(M.ASSIGN_CONV, { provider: info.provider, convId: info.convId, title: info.title, folderId, ...pos });
+    // External drop: a conversation link from a site sidebar (annotated by content/dnd.js) or any supported AI URL.
+    const info = GF.Sidebar.infoFromDataTransfer(dt, this.adapter);
+    if (!info) { console.info("[AI Folders] drop ignored: no conversation URL in", [...(dt.types || [])]); return; }
+    return this.dropExternal(info, target);
   }
+
+  /* Assign an external conversation {provider, convId, title} at a drop target. */
+  async dropExternal(info, target) {
+    if (!target || target.type === "root") return;
+    const folderId = target.type === "folder" ? target.id : target.folderId;
+    const pos = target.type === "conv" ? { targetKey: target.key, position: target.position } : {};
+    console.info("[AI Folders] add", info.provider + ":" + info.convId, "->", folderId);
+    return this.call(GF.MSG.ASSIGN_CONV, { provider: info.provider, convId: info.convId, title: info.title || info.convId, folderId, ...pos });
+  }
+
+  /* ---- Pointer-drag fallback support (used by content/dnd.js when native DnD doesn't start) ---- */
+  isOpen() { return this.panel.classList.contains("open"); }
+  targetFromPoint(x, y) {
+    const el = this.root.elementFromPoint ? this.root.elementFromPoint(x, y) : null;
+    if (!el || !this.tree || !this.tree.contains(el)) return null;
+    const conv = el.closest("a.conv"), folder = el.closest(".folder");
+    if (conv) { const r = conv.getBoundingClientRect(); return { type: "conv", key: conv.dataset.ckey, folderId: conv.dataset.fid, position: y < r.top + r.height / 2 ? "before" : "after", el: conv }; }
+    if (folder) return { type: "folder", id: folder.dataset.fid, position: "inside", el: folder };
+    return null;
+  }
+  highlight(target) {
+    this.clearIndicators();
+    if (target && target.el) target.el.classList.add(target.type === "conv" ? (target.position === "before" ? "drop-before" : "drop-after") : "over");
+  }
+  showGhost(text, x, y) {
+    if (!this.ghost) { this.ghost = this.el("div", { className: "ghost" }); this.root.appendChild(this.ghost); }
+    this.ghost.textContent = text; this.ghost.style.left = (x + 12) + "px"; this.ghost.style.top = (y + 8) + "px";
+  }
+  hideGhost() { if (this.ghost) { this.ghost.remove(); this.ghost = null; } this.clearIndicators(); }
 
   /* ---- JSON export / import ---- */
   exportJson() {
@@ -506,6 +527,27 @@ GF.Sidebar = class {
   }
 };
 
+/* Extract {provider, convId, title} from a DataTransfer: our annotation, text/x-moz-url, uri-list, plain text. */
+GF.Sidebar.infoFromDataTransfer = (dt, adapter) => {
+  const get = (t) => { try { return dt.getData(t) || ""; } catch (_) { return ""; } };
+  const custom = get("application/x-gf-conv");
+  if (custom) { try { const j = JSON.parse(custom); if (j.convId) return { provider: j.provider || adapter.id, ...j }; } catch (_) { /* fall through */ } }
+  const moz = get("text/x-moz-url").split("\n");                    // Firefox: "url\ntitle"
+  const candidates = [moz[0], ...get("text/uri-list").split("\n").filter(l => l && !l.startsWith("#")), get("text/plain").split("\n")[0]];
+  for (const raw of candidates) {
+    const url = (raw || "").trim(); if (!url) continue;
+    const parsed = GF.parseAnyUrl(url);
+    if (!parsed) continue;
+    let title = parsed.convId;
+    const a = GF.adapterById(parsed.provider);
+    const link = parsed.provider === adapter.id && adapter.pageLinks().find(l => adapter.linkId(l) === parsed.convId);
+    if (link) title = adapter.parseConvLink(link).title;
+    else if (raw === moz[0] && moz[1] && a && !a.isPlaceholder(moz[1].trim(), parsed.convId)) title = moz[1].trim();
+    return { ...parsed, title };
+  }
+  return null;
+};
+
 GF.Sidebar.CSS = `
 :host{all:initial}
 *{box-sizing:border-box;font:13px/1.4 system-ui,sans-serif}
@@ -544,6 +586,7 @@ button{background:#2b2b2b;color:#eee;border:1px solid #444;border-radius:6px;pad
 .cnt{color:#888;font-size:11px;min-width:16px;text-align:right}
 select.tagsel{flex:1;min-width:0;background:#111;color:#eee;border:1px solid #444;border-radius:6px}
 .conv .name{flex:1;overflow:hidden;text-overflow:ellipsis}
+.ghost{position:fixed;pointer-events:none;z-index:2;background:#22334f;color:#fff;border:1px solid #4a7cff;border-radius:6px;padding:2px 8px;font-size:12px;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .badge{flex:none;font-size:9px;line-height:13px;padding:0 3px;margin-right:4px;border-radius:3px;color:#fff;background:#666;font-weight:600}
 .empty,.footer{color:#888;font-size:11px;padding:4px}
 `;
