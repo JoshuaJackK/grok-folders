@@ -21,7 +21,7 @@ PY
 
 # 2) tests + lint
 for t in tests/*.test.js; do node "$t"; done
-web-ext lint --ignore-files "${IGNORE[@]}"
+web-ext lint --self-hosted --ignore-files "${IGNORE[@]}"
 
 # 3) sign (unlisted, self-distributed)
 rm -rf web-ext-artifacts

@@ -1,7 +1,13 @@
 {
   "addons": {
     "grok-folders@joshuajackk.github.io": {
-      "updates": []
+      "updates": [
+        {
+          "version": "0.2.0",
+          "update_link": "https://github.com/JoshuaJackK/grok-folders/releases/download/v0.2.0/grok-folders-0.2.0.xpi",
+          "update_hash": "sha256:d386f2db7c7994fc95c94fc8515a4d7d4a89852ac538ec83857c363918e6159a"
+        }
+      ]
     }
   }
 }
