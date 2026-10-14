@@ -16,6 +16,11 @@
           "version": "0.3.1",
           "update_link": "https://github.com/JoshuaJackK/grok-folders/releases/download/v0.3.1/grok-folders-0.3.1.xpi",
           "update_hash": "sha256:29c18dfb3fed15e15d472ac8ad247c2ef504bfdecdc819e228197940fcced4f7"
+        },
+        {
+          "version": "0.3.2",
+          "update_link": "https://github.com/JoshuaJackK/grok-folders/releases/download/v0.3.2/grok-folders-0.3.2.xpi",
+          "update_hash": "sha256:42efa126b64ab5891f9f74311938549a4abfe2ffe7c5c9f7f7a90d7ca6fb4821"
         }
       ]
     }
