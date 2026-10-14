@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "Grok Folders",
+  "version": "0.2.0",
+  "description": "Organize grok.com conversations into nested folders.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "grok-folders@joshuajackk.github.io",
+      "strict_min_version": "115.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      },
+      "update_url": "https://raw.githubusercontent.com/JoshuaJackK/grok-folders/main/updates.json"
+    }
+  },
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://grok.com/*"
+  ],
+  "background": {
+    "scripts": [
+      "shared/constants.js",
+      "background/storage.js",
+      "background/background.js"
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://grok.com/*"
+      ],
+      "js": [
+        "shared/constants.js",
+        "content/adapters/base.js",
+        "content/adapters/grok.js",
+        "content/sidebar.js",
+        "content/content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "48": "icons/icon.svg",
+    "96": "icons/icon.svg"
+  }
+}

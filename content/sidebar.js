@@ -1,0 +1,333 @@
+/* Sidebar UI inside a closed shadow root (style isolation from grok.com). No innerHTML. */
+var GF = globalThis.GF;
+/* Position tweaks: toggle button sits top-left next to Grok's own menu/logo. */
+const GF_POS = {
+  left: 60, top: 12,          // default position (top-left, beside Grok's menu); double-click resets here
+  size: 36,                   // toggle button size (px)
+  panelGap: 8,                // gap between button and panel
+  panelWidth: 300,
+  panelMinHeight: 260,        // prefer opening below if at least this much room
+  margin: 4,                  // min distance from viewport edges
+  dragThreshold: 4,
+  autoExpandMs: 600,          // hover time before a collapsed folder opens during drag           // px of movement before a press becomes a drag
+  storageKey: "uiPos"         // storage.local key (per-device UI pref)
+};
+GF.Sidebar = class {
+  constructor(adapter, api) {
+    this.adapter = adapter; this.api = api;
+    this.state = { folders: {}, convs: {} }; this.mode = "sync";
+    this.query = ""; this.collapsed = new Set(); this.selected = null;
+    const host = document.createElement("div");
+    host.id = "grok-folders-host";
+    host.style.cssText = "position:fixed;top:0;left:0;z-index:2147483646;";
+    document.documentElement.appendChild(host);
+    this.root = host.attachShadow({ mode: "closed" });
+    const style = document.createElement("style");
+    style.textContent = GF.Sidebar.CSS;
+    this.root.appendChild(style);
+    this.toggle = this.el("button", { className: "toggle", title: "Grok Folders", textContent: "📁" });
+    this.panel = this.el("div", { className: "panel" });
+    this.root.append(this.toggle, this.panel);
+    this.pos = { left: GF_POS.left, top: GF_POS.top };
+    this.initDrag();
+  }
+
+  /* ---- Draggable toggle button; position persisted per-device in storage.local ---- */
+  initDrag() {
+    const t = this.toggle;
+    let start = null, dragging = false;
+    t.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      start = { x: e.clientX, y: e.clientY, left: this.pos.left, top: this.pos.top };
+      dragging = false; t.setPointerCapture(e.pointerId);
+    });
+    t.addEventListener("pointermove", (e) => {
+      if (!start) return;
+      const dx = e.clientX - start.x, dy = e.clientY - start.y;
+      if (!dragging && Math.hypot(dx, dy) < GF_POS.dragThreshold) return;
+      dragging = true; t.classList.add("dragging");
+      this.applyPos({ left: start.left + dx, top: start.top + dy });
+    });
+    const end = (e) => {
+      if (!start) return;
+      start = null; t.classList.remove("dragging");
+      try { t.releasePointerCapture(e.pointerId); } catch (_) { /* already released */ }
+      if (dragging) this.savePos(); else this.togglePanel();
+    };
+    t.addEventListener("pointerup", end);
+    t.addEventListener("pointercancel", (e) => { dragging = true; end(e); });
+    t.addEventListener("dblclick", () => { this.applyPos({ left: GF_POS.left, top: GF_POS.top }); this.savePos(); });
+    window.addEventListener("resize", () => this.applyPos(this.pos));
+    browser.storage.local.get(GF_POS.storageKey).then((r) => {
+      const p = r && r[GF_POS.storageKey];
+      this.applyPos(p && Number.isFinite(p.left) && Number.isFinite(p.top) ? p : this.pos);
+    }).catch(() => this.applyPos(this.pos));
+    this.applyPos(this.pos);
+  }
+  clamp(p) {
+    const m = GF_POS.margin, s = GF_POS.size;
+    return {
+      left: Math.round(Math.min(Math.max(m, p.left), Math.max(m, window.innerWidth - s - m))),
+      top: Math.round(Math.min(Math.max(m, p.top), Math.max(m, window.innerHeight - s - m)))
+    };
+  }
+  applyPos(p) {
+    this.pos = this.clamp(p);
+    this.toggle.style.left = this.pos.left + "px";
+    this.toggle.style.top = this.pos.top + "px";
+    if (this.panel.classList.contains("open")) this.placePanel();
+  }
+  savePos() { browser.storage.local.set({ [GF_POS.storageKey]: this.pos }).catch(() => {}); }
+  togglePanel() { this.panel.classList.toggle("open"); if (this.panel.classList.contains("open")) this.placePanel(); }
+  /* Open below the button (or above if no room); left-aligned (or right-aligned if near right edge). */
+  placePanel() {
+    const { left, top } = this.pos, s = GF_POS.size, g = GF_POS.panelGap, m = GF_POS.margin;
+    const vw = window.innerWidth, vh = window.innerHeight, P = this.panel.style;
+    const w = Math.min(GF_POS.panelWidth, vw - 2 * m);
+    P.width = w + "px";
+    const x = left + w > vw - m ? left + s - w : left;
+    P.left = Math.max(m, Math.min(x, vw - w - m)) + "px";
+    const below = vh - (top + s + g) - m, above = top - g - m;
+    P.top = P.bottom = "";
+    if (below >= GF_POS.panelMinHeight || below >= above) { P.top = (top + s + g) + "px"; P.maxHeight = Math.max(below, 120) + "px"; }
+    else { P.bottom = (vh - top + g) + "px"; P.maxHeight = above + "px"; }
+  }
+  el(tag, props = {}, ...kids) { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; }
+  setState(state, mode) { this.state = state || { folders: {}, convs: {} }; this.mode = mode || this.mode; this.render(); }
+  async call(type, payload) { const r = await this.api(type, payload); if (!r.ok) alert("Grok Folders: " + r.error); return r; }
+
+  children(pid) { return Object.values(this.state.folders).filter(f => f.parentId === pid).sort((a, b) => a.order - b.order || a.name.localeCompare(b.name)); }
+  convsIn(fid) { return Object.values(this.state.convs).filter(c => c.folderId === fid).sort((a, b) => (a.order || 0) - (b.order || 0) || a.title.localeCompare(b.title)); }
+  matchesSearch(f) {
+    if (!this.query) return true;
+    const q = this.query.toLowerCase();
+    return f.name.toLowerCase().includes(q) || this.convsIn(f.id).some(c => c.title.toLowerCase().includes(q)) || this.children(f.id).some(ch => this.matchesSearch(ch));
+  }
+
+  render() {
+    const M = GF.MSG;
+    const search = this.el("input", { type: "search", placeholder: "Search titles…", value: this.query });
+    search.oninput = () => { this.query = search.value; this.renderTree(); };
+    const newRoot = this.el("button", { textContent: "+ Folder" });
+    newRoot.onclick = async () => { const n = prompt("Folder name"); if (n) await this.call(M.CREATE_FOLDER, { name: n, parentId: null }); };
+    const addCur = this.el("button", { textContent: "+ Current chat", title: "Add current conversation to selected folder" });
+    addCur.onclick = () => this.addCurrent();
+    const exp = this.el("button", { textContent: "Export", title: "Download JSON backup" });
+    exp.onclick = () => this.exportJson();
+    const imp = this.el("button", { textContent: "Import", title: "Import JSON backup" });
+    const file = this.el("input", { type: "file", accept: "application/json,.json", hidden: true });
+    imp.onclick = () => file.click();
+    file.onchange = () => { const f = file.files[0]; file.value = ""; if (f) this.importJson(f); };
+    this.tree = this.el("div", { className: "tree" });
+    const footer = this.el("div", { className: "footer", textContent: "storage: " + this.mode });
+    this.panel.replaceChildren(this.el("div", { className: "head" }, this.el("b", { textContent: "Grok Folders" })), search, this.el("div", { className: "row" }, newRoot, addCur), this.el("div", { className: "row" }, exp, imp, file), this.tree, footer);
+    this.renderTree();
+    if (this.query) { search.focus(); search.setSelectionRange(search.value.length, search.value.length); }
+  }
+
+  renderTree() {
+    const build = (pid, depth) => this.children(pid).filter(f => this.matchesSearch(f)).map(f => this.folderNode(f, depth, build));
+    const nodes = build(null, 0);
+    const rootZone = this.el("div", { className: "rootzone", textContent: "⤒ Top level (drop folder here)" });
+    this.dropTarget(rootZone, () => "root", (e) => this.handleDrop(e, { type: "root" }));
+    this.tree.replaceChildren(rootZone, ...(nodes.length ? nodes : [this.el("div", { className: "empty", textContent: this.query ? "No matches" : "No folders yet" })]));
+  }
+
+  /* ---- Drag & drop inside the tree ----
+   * this.drag = { kind: "folder"|"conv", id } for internal drags; null for external (Grok page links).
+   * Zones: folder row top 25% = before, bottom 25% = after, middle = inside; conv row top/bottom half. */
+  zone(e, el, kind) {
+    const r = el.getBoundingClientRect(), y = (e.clientY - r.top) / r.height;
+    if (kind === "conv") return y < 0.5 ? "before" : "after";
+    return y < 0.25 ? "before" : y > 0.75 ? "after" : "inside";
+  }
+  clearIndicators() { this.tree.querySelectorAll(".over,.drop-before,.drop-after").forEach(x => x.classList.remove("over", "drop-before", "drop-after")); }
+  dropTarget(el, getZone, onDrop, onHover) {
+    el.addEventListener("dragover", (e) => {
+      const z = getZone(e); if (!z) return;
+      e.preventDefault(); e.stopPropagation();
+      e.dataTransfer.dropEffect = this.drag ? "move" : "copy";
+      this.clearIndicators();
+      el.classList.add(z === "before" ? "drop-before" : z === "after" ? "drop-after" : "over");
+      if (onHover) onHover(z);
+    });
+    el.addEventListener("dragleave", (e) => { if (!el.contains(e.relatedTarget)) el.classList.remove("over", "drop-before", "drop-after"); });
+    el.addEventListener("drop", (e) => { const z = getZone(e); if (!z) return; e.preventDefault(); e.stopPropagation(); this.clearIndicators(); clearTimeout(this.expandTimer); onDrop(e, z); this.drag = null; });
+  }
+  dragSource(el, kind, id) {
+    el.draggable = true;
+    el.addEventListener("dragstart", (e) => {
+      e.stopPropagation();
+      this.drag = { kind, id };
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData(kind === "conv" ? "application/x-gf-conv-key" : "application/x-gf-folder", id);
+      e.dataTransfer.setData("text/plain", kind + ":" + id);
+    });
+    el.addEventListener("dragend", () => { this.drag = null; this.clearIndicators(); clearTimeout(this.expandTimer); });
+  }
+
+  folderNode(f, depth, build) {
+    const M = GF.MSG;
+    const open = !this.collapsed.has(f.id) || !!this.query;
+    const caret = this.el("span", { className: "caret", textContent: open ? "▾" : "▸" });
+    caret.onclick = (e) => { e.stopPropagation(); this.collapsed.has(f.id) ? this.collapsed.delete(f.id) : this.collapsed.add(f.id); this.renderTree(); };
+    const btn = (t, title, fn) => { const b = this.el("button", { className: "mini", textContent: t, title }); b.onclick = (e) => { e.stopPropagation(); fn(); }; return b; };
+    const label = this.el("div", { className: "folder" + (this.selected === f.id ? " sel" : "") },
+      caret, this.el("span", { className: "name", textContent: "📁 " + f.name }),
+      btn("+", "Subfolder", async () => { const n = prompt("Subfolder name"); if (n) await this.call(M.CREATE_FOLDER, { name: n, parentId: f.id }); }),
+      btn("✎", "Rename", async () => { const n = prompt("Rename", f.name); if (n) await this.call(M.RENAME_FOLDER, { id: f.id, name: n }); }),
+      btn("🗑", "Delete (recursive)", async () => { if (confirm(`Delete "${f.name}" with all subfolders?`)) await this.call(M.DELETE_FOLDER, { id: f.id }); }));
+    label.style.paddingLeft = (4 + depth * 12) + "px";
+    label.onclick = () => { this.selected = f.id; this.renderTree(); };
+    this.dragSource(label, "folder", f.id);
+    this.dropTarget(label,
+      (e) => {
+        if (this.drag && this.drag.kind === "folder" && this.drag.id === f.id) return null;
+        return this.drag && this.drag.kind === "folder" ? this.zone(e, label, "folder") : "inside"; // convs/links go into folder
+      },
+      (e, z) => this.handleDrop(e, { type: "folder", id: f.id, position: z }),
+      (z) => { // auto-expand collapsed folder after hovering ~600ms
+        if (z !== "inside" || !this.collapsed.has(f.id)) { clearTimeout(this.expandTimer); this.expandFor = null; return; }
+        if (this.expandFor === f.id) return;
+        clearTimeout(this.expandTimer); this.expandFor = f.id;
+        this.expandTimer = setTimeout(() => { this.collapsed.delete(f.id); this.expandFor = null; this.renderTree(); }, GF_POS.autoExpandMs);
+      });
+    const wrap = this.el("div", {}, label);
+    if (open) {
+      const q = this.query.toLowerCase();
+      for (const c of this.convsIn(f.id)) {
+        if (q && !c.title.toLowerCase().includes(q) && !f.name.toLowerCase().includes(q)) continue;
+        const a = this.el("a", { className: "conv", href: this.adapter.conversationUrl(c.convId), title: c.title },
+          this.el("span", { className: "name", textContent: "💬 " + (c.title || c.convId) }));
+        a.style.paddingLeft = (20 + depth * 12) + "px";
+        const x = this.el("button", { className: "mini", textContent: "✕", title: "Remove from folder" });
+        x.onclick = (e) => { e.preventDefault(); e.stopPropagation(); this.call(M.UNASSIGN_CONV, { key: c.key }); };
+        a.append(x);
+        this.dragSource(a, "conv", c.key);
+        this.dropTarget(a,
+          (e) => (this.drag && this.drag.kind === "folder") ? null : this.zone(e, a, "conv"),
+          (e, z) => this.handleDrop(e, { type: "conv", key: c.key, folderId: f.id, position: z }));
+        wrap.append(a);
+      }
+      wrap.append(...build(f.id, depth + 1));
+    }
+    return wrap;
+  }
+
+  /* target: {type:"root"} | {type:"folder", id, position} | {type:"conv", key, folderId, position} */
+  async handleDrop(e, target) {
+    const M = GF.MSG, dt = e.dataTransfer;
+    const drag = this.drag || (() => {
+      const fid = dt.getData("application/x-gf-folder"), ck = dt.getData("application/x-gf-conv-key");
+      if (fid) return { kind: "folder", id: fid };
+      if (ck && this.state.convs[ck]) return { kind: "conv", id: ck };
+      return null;
+    })();
+    if (drag && drag.kind === "folder") {
+      if (target.type === "root") return this.call(M.MOVE_FOLDER, { id: drag.id, position: "root" });
+      if (target.type === "folder") return this.call(M.MOVE_FOLDER, { id: drag.id, targetId: target.id, position: target.position });
+      return;
+    }
+    if (target.type === "root") return;
+    const folderId = target.type === "folder" ? target.id : target.folderId;
+    const pos = target.type === "conv" ? { targetKey: target.key, position: target.position } : {};
+    if (drag && drag.kind === "conv") {
+      if (drag.id === target.key) return;
+      return this.call(M.MOVE_CONV, { key: drag.id, folderId, ...pos });
+    }
+    // External drop: Grok page conversation link.
+    let info = null;
+    const custom = dt.getData("application/x-gf-conv");
+    if (custom) { try { info = JSON.parse(custom); } catch (_) { info = null; } }
+    if (!info) {
+      const url = (dt.getData("text/uri-list") || dt.getData("text/plain") || "").split("\n")[0].trim();
+      try {
+        const u = new URL(url, location.origin);
+        const a = document.querySelector(`a[href="${CSS.escape(u.pathname)}"]`) || Object.assign(document.createElement("a"), { href: u.href });
+        info = this.adapter.parseConvLink(a);
+      } catch (_) { /* not a URL */ }
+    }
+    if (!info) return;
+    await this.call(M.ASSIGN_CONV, { provider: this.adapter.id, convId: info.convId, title: info.title, folderId, ...pos });
+  }
+
+  /* ---- JSON export / import ---- */
+  exportJson() {
+    const data = {
+      app: "grok-folders", schema: GF.SCHEMA_VERSION, exportedAt: new Date().toISOString(),
+      folders: Object.values(this.state.folders).map(({ id, name, parentId, order }) => ({ id, name, parentId, order })),
+      conversations: Object.values(this.state.convs).map(({ provider, convId, folderId, title, order }) => ({ provider, convId, folderId, title, order }))
+    };
+    const d = new Date(), pad = (n) => String(n).padStart(2, "0");
+    const name = `grok-folders-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.json`;
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+    const a = this.el("a", { href: url, download: name });
+    this.root.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+
+  async importJson(file) {
+    let data;
+    try { data = JSON.parse(await file.text()); } catch (e) { return this.dialog("Invalid JSON: " + e.message, [["OK", null]]); }
+    if (!data || data.app !== "grok-folders" || !Array.isArray(data.folders) || !Array.isArray(data.conversations))
+      return this.dialog("This is not a Grok Folders export file.", [["OK", null]]);
+    const mode = await this.dialog(
+      `Import ${data.folders.length} folders and ${data.conversations.length} conversations from "${file.name}".\n` +
+      "Replace: delete current data first. Merge: keep existing, add only new folders/conversations (safe to repeat).",
+      [["Merge", "merge"], ["Replace", "replace"], ["Cancel", null]]);
+    if (!mode) return;
+    if (mode === "replace" && !(await this.dialog("Really delete all current folders and replace them?", [["Replace", true], ["Cancel", null]]))) return;
+    const r = await this.call(GF.MSG.IMPORT, { data, mode });
+    if (r.ok) this.dialog(`Folders: ${r.result.foldersAdded} added, ${r.result.foldersSkipped} already present.\nConversations: ${r.result.conversationsAdded} added, ${r.result.conversationsSkipped} already present.`, [["OK", null]]);
+  }
+
+  /* Minimal in-panel modal; resolves with the chosen button's value. */
+  dialog(text, buttons) {
+    if (!this.panel.classList.contains("open")) this.togglePanel();
+    return new Promise((resolve) => {
+      const box = this.el("div", { className: "dlg" });
+      const msg = this.el("div", { className: "dlg-text", textContent: text });
+      const row = this.el("div", { className: "row" }, ...buttons.map(([label, val]) => {
+        const b = this.el("button", { textContent: label });
+        b.onclick = () => { box.remove(); resolve(val); };
+        return b;
+      }));
+      box.append(this.el("div", { className: "dlg-card" }, msg, row));
+      this.panel.appendChild(box);
+    });
+  }
+
+  async addCurrent() {
+    const conv = this.adapter.currentConversation();
+    if (!conv) return alert("Open a conversation (/c/<id>) first.");
+    if (!this.selected || !this.state.folders[this.selected]) return alert("Select a folder first (click it).");
+    await this.call(GF.MSG.ASSIGN_CONV, { provider: this.adapter.id, convId: conv.convId, title: conv.title, folderId: this.selected });
+  }
+};
+
+GF.Sidebar.CSS = `
+:host{all:initial}
+*{box-sizing:border-box;font:13px/1.4 system-ui,sans-serif}
+.toggle{position:fixed;touch-action:none;user-select:none;width:${GF_POS.size}px;height:${GF_POS.size}px;border-radius:50%;border:1px solid #444;background:#1e1e1e;color:#fff;cursor:grab}
+.toggle.dragging{cursor:grabbing;opacity:.8}
+.panel{position:fixed;display:none;flex-direction:column;gap:6px;padding:10px;background:#1b1b1b;color:#eee;border:1px solid #333;border-radius:10px;box-shadow:0 8px 24px #0008}
+.panel.open{display:flex}
+input{width:100%;padding:5px 8px;background:#111;color:#eee;border:1px solid #444;border-radius:6px}
+.row{display:flex;gap:6px}
+button{background:#2b2b2b;color:#eee;border:1px solid #444;border-radius:6px;padding:4px 8px;cursor:pointer}
+.tree{overflow:auto;flex:1;min-height:60px}
+.folder{display:flex;align-items:center;gap:4px;padding:3px 4px;border-radius:5px;cursor:pointer}
+.folder:hover{background:#262626}.folder.sel{background:#22334f}
+.over{outline:2px dashed #4a7cff;background:#1d2a44}
+.drop-before{box-shadow:inset 0 2px 0 #4a7cff}.drop-after{box-shadow:inset 0 -2px 0 #4a7cff}
+.rootzone{color:#888;font-size:11px;padding:3px 6px;border:1px dashed #333;border-radius:5px;margin-bottom:4px}
+.name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.caret{width:12px;color:#999}
+.mini{padding:0 4px;font-size:11px;border:none;background:transparent;opacity:.6}.mini:hover{opacity:1}
+.conv{display:flex;justify-content:space-between;align-items:center;color:#bcd;text-decoration:none;padding:2px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.conv:hover{background:#262626}
+.dlg{position:absolute;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;border-radius:10px;padding:10px}
+.dlg-card{background:#222;border:1px solid #444;border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.dlg-text{white-space:pre-wrap}
+.empty,.footer{color:#888;font-size:11px;padding:4px}
+`;
