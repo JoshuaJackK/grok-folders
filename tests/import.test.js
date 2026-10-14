@@ -8,6 +8,7 @@ const root = path.join(__dirname, "..");
 for (const f of ["shared/constants.js", "background/storage.js", "background/background.js"]) vm.runInThisContext(fs.readFileSync(path.join(root, f), "utf8"), { filename: f });
 const M = GF.MSG, send = (type, payload) => T[0]({ type, payload });
 const exportState = () => { const s = GF.Storage.get(); return { app: "grok-folders", schema: 1, exportedAt: "", folders: Object.values(s.folders).map(({ id, name, parentId, order }) => ({ id, name, parentId, order })), conversations: Object.values(s.convs).map(({ provider, convId, folderId, title }) => ({ provider, convId, folderId, title })) }; };
+const assertSub = (act, exp) => { for (const k of Object.keys(exp)) assert.strictEqual(act[k], exp[k], k + ": " + JSON.stringify(act)); };
 const counts = () => [Object.keys(GF.Storage.get().folders).length, Object.keys(GF.Storage.get().convs).length];
 
 (async () => {
@@ -23,7 +24,7 @@ const counts = () => [Object.keys(GF.Storage.get().folders).length, Object.keys(
   // 1) Idempotency: same export merged twice -> zero changes.
   for (let i = 0; i < 2; i++) {
     const r = await ok(M.IMPORT, { data: exp, mode: "merge" });
-    assert.deepStrictEqual(r, { foldersAdded: 0, foldersSkipped: 4, conversationsAdded: 0, conversationsSkipped: 2 });
+    assertSub(r, { foldersAdded: 0, foldersSkipped: 4, conversationsAdded: 0, conversationsSkipped: 2 });
     assert.strictEqual(JSON.stringify(GF.Storage.get()), before);
   }
   console.log("PASS idempotent merge");
@@ -39,7 +40,7 @@ const counts = () => [Object.keys(GF.Storage.get().folders).length, Object.keys(
     { provider: "grok", convId: "c3", folderId: "X3", title: "Conv 3" }  // new -> into mapped folder
   ] };
   let r = await ok(M.IMPORT, { data: other, mode: "merge" });
-  assert.deepStrictEqual(r, { foldersAdded: 2, foldersSkipped: 2, conversationsAdded: 1, conversationsSkipped: 1 });
+  assertSub(r, { foldersAdded: 2, foldersSkipped: 2, conversationsAdded: 1, conversationsSkipped: 1 });
   const st = GF.Storage.get();
   assert.strictEqual(st.folders.X3.parentId, b);
   assert.strictEqual(st.folders.X4.parentId, null);

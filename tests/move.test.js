@@ -1,4 +1,4 @@
-/* Run: node tests/move.test.js — move/reorder + v1->v2 migration (mocked browser APIs). */
+/* Run: node tests/move.test.js — move/reorder + v1->v3 migration (mocked browser APIs). */
 const fs = require("fs"), path = require("path"), assert = require("assert"), vm = require("vm");
 const mk = () => { const d = {}; return { _d: d, get: async () => structuredClone(d), set: async (o) => { Object.assign(d, structuredClone(o)); }, remove: async (ks) => ks.forEach(k => delete d[k]) }; };
 const T = [];
@@ -29,9 +29,9 @@ const convs = (fid) => Object.values(S().convs).filter(c => c.folderId === fid).
   assert.strictEqual(S().convs["grok:c2"].title, "Two");
   assert.strictEqual(sync._d.meta.v, 1, "load alone must not rewrite storage");
   await ok(M.RENAME_FOLDER, { id: "D", name: "Other" }); // any write persists v2
-  assert.strictEqual(sync._d.meta.v, 2);
+  assert.strictEqual(sync._d.meta.v, 3);
   assert.deepStrictEqual(sync._d.c0["grok:c2"], ["C", "Two", 1]);
-  console.log("PASS v1->v2 migration preserves data");
+  console.log("PASS v1->v3 migration preserves data");
 
   // Reorder conversations within a folder.
   await ok(M.MOVE_CONV, { key: "grok:c3", folderId: "C", targetKey: "grok:c1", position: "before" });

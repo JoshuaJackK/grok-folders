@@ -5,7 +5,10 @@
  * Layout:
  *   "meta" -> { v: schemaVersion, fc: <#folder chunks>, cc: <#conv chunks>, ts }
  *   "f0".."fN" -> { <folderId>: [name, parentId|null, order] }      (flat map)
- *   "c0".."cN" -> { "<provider>:<convId>": [folderId, title, order] } (flat map; v1 had no order)
+ *   "c0".."cN" -> { "<provider>:<convId>": [folderId, title, order, tagIds?] } (v1 had no order)
+ *   "t0".."tN" -> { <tagId>: [name, colorIdx] }                       (v3)
+ * Folder tuple (v3): [name, parentId, order, colorIdx?, tagIds?]; trailing defaults
+ * (color 0, no tags) are omitted to save bytes. Colors are palette indexes (GF.PALETTE).
  * Short keys + array tuples keep the payload small. Chunks are filled greedily
  * up to CHUNK_BYTES. Stale chunks beyond the new count are removed.
  * If the sync write fails (quota/unavailable) the same layout is written to
@@ -34,23 +37,33 @@ GF.Storage = (() => {
     return items;
   }
 
+  // Drop trailing default values (0 / empty array) beyond index `keep`.
+  function trim(arr, keep) {
+    while (arr.length > keep) { const v = arr[arr.length - 1]; if (v === 0 || v == null || (Array.isArray(v) && !v.length)) arr.pop(); else break; }
+    return arr;
+  }
+
   function encode(state) {
-    const f = {}, c = {};
-    for (const [id, x] of Object.entries(state.folders)) f[id] = [x.name, x.parentId, x.order];
-    for (const [k, x] of Object.entries(state.convs)) c[k] = [x.folderId, x.title || "", x.order || 0];
-    const fi = chunk("f", f), ci = chunk("c", c);
-    const meta = { v: GF.SCHEMA_VERSION, fc: Object.keys(fi).length, cc: Object.keys(ci).length, ts: Date.now() };
-    return { meta, ...fi, ...ci };
+    const f = {}, c = {}, t = {};
+    for (const [id, x] of Object.entries(state.folders)) f[id] = trim([x.name, x.parentId, x.order, x.color || 0, x.tags || []], 3);
+    for (const [k, x] of Object.entries(state.convs)) c[k] = trim([x.folderId, x.title || "", x.order || 0, x.tags || []], 3);
+    for (const [id, x] of Object.entries(state.tags || {})) t[id] = [x.name, x.color || 0];
+    const fi = chunk("f", f), ci = chunk("c", c), ti = chunk("t", t);
+    const meta = { v: GF.SCHEMA_VERSION, fc: Object.keys(fi).length, cc: Object.keys(ci).length, tc: Object.keys(ti).length, ts: Date.now() };
+    return { meta, ...fi, ...ci, ...ti };
   }
 
   function decode(all) {
-    const st = { folders: {}, convs: {} };
+    const st = { folders: {}, convs: {}, tags: {} };
     const meta = all.meta; if (!meta) return st;
+    for (let i = 0; i < (meta.tc || 0); i++) for (const [id, t] of Object.entries(all["t" + i] || {}))
+      st.tags[id] = { id, name: t[0], color: t[1] || 0 };
+    const tagList = (a) => Array.isArray(a) ? a.filter(id => st.tags[id]) : [];
     for (let i = 0; i < meta.fc; i++) for (const [id, t] of Object.entries(all["f" + i] || {}))
-      st.folders[id] = { id, name: t[0], parentId: t[1], order: t[2] };
+      st.folders[id] = { id, name: t[0], parentId: t[1], order: t[2] || 0, color: t[3] || 0, tags: tagList(t[4]) };
     for (let i = 0; i < meta.cc; i++) for (const [k, t] of Object.entries(all["c" + i] || {})) {
       const [provider, ...rest] = k.split(":");
-      st.convs[k] = { key: k, provider, convId: rest.join(":"), folderId: t[0], title: t[1], order: Number.isFinite(t[2]) ? t[2] : 0 };
+      st.convs[k] = { key: k, provider, convId: rest.join(":"), folderId: t[0], title: t[1], order: Number.isFinite(t[2]) ? t[2] : 0, tags: tagList(t[3]) };
     }
     return st;
   }
@@ -70,7 +83,9 @@ GF.Storage = (() => {
       }
       all.meta = { ...all.meta, v: 2 };
       return all;
-    }
+    },
+    // v2 -> v3: add (empty) tag chunk table; folder/conv tuples are forward-compatible.
+    2: (all) => { all.meta = { ...all.meta, v: 3, tc: all.meta.tc || 0 }; return all; }
   };
   function migrate(all) {
     while (all.meta && all.meta.v < GF.SCHEMA_VERSION) {
@@ -86,6 +101,7 @@ GF.Storage = (() => {
     const m = all && all.meta; if (!m) return false;
     for (let i = 0; i < m.fc; i++) if (!all["f" + i]) return false;
     for (let i = 0; i < m.cc; i++) if (!all["c" + i]) return false;
+    for (let i = 0; i < (m.tc || 0); i++) if (!all["t" + i]) return false;
     return true;
   }
 
@@ -108,14 +124,14 @@ GF.Storage = (() => {
     if (!pick && ((sync && sync.meta) || (local && local.meta)))
       throw new Error("stored data incomplete; refusing to load as empty");
     mode = pick && pick.area === "local" && local.mode === "local" ? "local" : "sync";
-    cache = pick ? decode(migrate(pick.all)) : { folders: {}, convs: {} };
+    cache = pick ? decode(migrate(pick.all)) : { folders: {}, convs: {}, tags: {} };
     lastTs = pick ? pick.all.meta.ts : 0;
     console.info("[GF] loaded from", pick ? pick.area : "(empty)", Object.keys(cache.folders).length, "folders");
     return cache;
   }
 
   async function write(area, items, prevKeys) {
-    const stale = prevKeys.filter(k => /^[fc]\d+$/.test(k) && !(k in items));
+    const stale = prevKeys.filter(k => /^[fct]\d+$/.test(k) && !(k in items));
     await browser.storage[area].set(items);
     if (stale.length) await browser.storage[area].remove(stale);
   }

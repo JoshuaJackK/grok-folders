@@ -15,8 +15,10 @@ const GF_POS = {
 GF.Sidebar = class {
   constructor(adapter, api) {
     this.adapter = adapter; this.api = api;
-    this.state = { folders: {}, convs: {} }; this.mode = "sync";
-    this.query = ""; this.collapsed = new Set(); this.selected = null;
+    this.state = { folders: {}, convs: {}, tags: {} }; this.mode = "sync";
+    this.query = ""; this.tagFilter = null; this.collapsed = new Set(); this.selected = null;
+    this.layer = document.createElement("div"); // modal layer, survives re-renders
+    this.live = null;                              // refresh fn of an open live modal
     const host = document.createElement("div");
     host.id = "grok-folders-host";
     host.style.cssText = "position:fixed;top:0;left:0;z-index:2147483646;";
@@ -93,20 +95,38 @@ GF.Sidebar = class {
     else { P.bottom = (vh - top + g) + "px"; P.maxHeight = above + "px"; }
   }
   el(tag, props = {}, ...kids) { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; }
-  setState(state, mode) { this.state = state || { folders: {}, convs: {} }; this.mode = mode || this.mode; this.render(); }
+  setState(state, mode) {
+    this.state = state || {}; for (const k of ["folders", "convs", "tags"]) this.state[k] = this.state[k] || {};
+    if (this.tagFilter && !this.state.tags[this.tagFilter]) this.tagFilter = null;
+    this.mode = mode || this.mode; this.render(); if (this.live) this.live();
+  }
   async call(type, payload) { const r = await this.api(type, payload); if (!r.ok) alert("Grok Folders: " + r.error); return r; }
 
   children(pid) { return Object.values(this.state.folders).filter(f => f.parentId === pid).sort((a, b) => a.order - b.order || a.name.localeCompare(b.name)); }
   convsIn(fid) { return Object.values(this.state.convs).filter(c => c.folderId === fid).sort((a, b) => (a.order || 0) - (b.order || 0) || a.title.localeCompare(b.title)); }
-  matchesSearch(f) {
-    if (!this.query) return true;
-    const q = this.query.toLowerCase();
-    return f.name.toLowerCase().includes(q) || this.convsIn(f.id).some(c => c.title.toLowerCase().includes(q)) || this.children(f.id).some(ch => this.matchesSearch(ch));
+  /* Search matches titles, folder names and tag names; tag filter narrows to tagged items. */
+  tagNames(x) { return (x.tags || []).map(id => (this.state.tags[id] || {}).name || "").join(" ").toLowerCase(); }
+  hasFilterTag(x) { return !this.tagFilter || (x.tags || []).includes(this.tagFilter); }
+  textHit(x, text) { const q = this.query.toLowerCase(); return !q || text.toLowerCase().includes(q) || this.tagNames(x).includes(q); }
+  folderSelfMatch(f) { return (this.query || this.tagFilter) && this.textHit(f, f.name) && this.hasFilterTag(f); }
+  convMatch(c, f) {
+    if (!this.query && !this.tagFilter) return true;
+    if (this.folderSelfMatch(f)) return true;
+    return this.textHit(c, c.title || "") && this.hasFilterTag(c);
   }
-
+  matchesSearch(f) {
+    if (!this.query && !this.tagFilter) return true;
+    return this.folderSelfMatch(f) || this.convsIn(f.id).some(c => this.convMatch(c, f)) || this.children(f.id).some(ch => this.matchesSearch(ch));
+  }
   render() {
     const M = GF.MSG;
-    const search = this.el("input", { type: "search", placeholder: "Search titles…", value: this.query });
+    const search = this.el("input", { type: "search", placeholder: "Search titles / tags…", value: this.query });
+    const tf = this.el("select", { className: "tagsel", title: "Filter by tag" },
+      this.el("option", { value: "", textContent: "All tags" }),
+      ...Object.values(this.state.tags).sort((a, b) => a.name.localeCompare(b.name)).map(t => this.el("option", { value: t.id, textContent: "# " + t.name, selected: t.id === this.tagFilter })));
+    tf.onchange = () => { this.tagFilter = tf.value || null; this.render(); };
+    const tagsBtn = this.el("button", { textContent: "Tags", title: "Manage tags" });
+    tagsBtn.onclick = () => this.manageTags();
     search.oninput = () => { this.query = search.value; this.renderTree(); };
     const newRoot = this.el("button", { textContent: "+ Folder" });
     newRoot.onclick = async () => { const n = prompt("Folder name"); if (n) await this.call(M.CREATE_FOLDER, { name: n, parentId: null }); };
@@ -120,7 +140,7 @@ GF.Sidebar = class {
     file.onchange = () => { const f = file.files[0]; file.value = ""; if (f) this.importJson(f); };
     this.tree = this.el("div", { className: "tree" });
     const footer = this.el("div", { className: "footer", textContent: "storage: " + this.mode });
-    this.panel.replaceChildren(this.el("div", { className: "head" }, this.el("b", { textContent: "Grok Folders" })), search, this.el("div", { className: "row" }, newRoot, addCur), this.el("div", { className: "row" }, exp, imp, file), this.tree, footer);
+    this.panel.replaceChildren(this.el("div", { className: "head" }, this.el("b", { textContent: "Grok Folders" })), this.el("div", { className: "row" }, search, tf), this.el("div", { className: "row" }, newRoot, addCur), this.el("div", { className: "row" }, exp, imp, tagsBtn, file), this.tree, footer, this.layer);
     this.renderTree();
     if (this.query) { search.focus(); search.setSelectionRange(search.value.length, search.value.length); }
   }
@@ -168,12 +188,13 @@ GF.Sidebar = class {
 
   folderNode(f, depth, build) {
     const M = GF.MSG;
-    const open = !this.collapsed.has(f.id) || !!this.query;
+    const open = !this.collapsed.has(f.id) || !!this.query || !!this.tagFilter;
     const caret = this.el("span", { className: "caret", textContent: open ? "▾" : "▸" });
     caret.onclick = (e) => { e.stopPropagation(); this.collapsed.has(f.id) ? this.collapsed.delete(f.id) : this.collapsed.add(f.id); this.renderTree(); };
     const btn = (t, title, fn) => { const b = this.el("button", { className: "mini", textContent: t, title }); b.onclick = (e) => { e.stopPropagation(); fn(); }; return b; };
     const label = this.el("div", { className: "folder" + (this.selected === f.id ? " sel" : "") },
-      caret, this.el("span", { className: "name", textContent: "📁 " + f.name }),
+      caret, this.folderIcon(f), this.el("span", { className: "name", textContent: f.name }), this.chips(f),
+      btn("#", "Tags", () => this.editTags("folder", f.id, f.tags)),
       btn("+", "Subfolder", async () => { const n = prompt("Subfolder name"); if (n) await this.call(M.CREATE_FOLDER, { name: n, parentId: f.id }); }),
       btn("✎", "Rename", async () => { const n = prompt("Rename", f.name); if (n) await this.call(M.RENAME_FOLDER, { id: f.id, name: n }); }),
       btn("🗑", "Delete (recursive)", async () => { if (confirm(`Delete "${f.name}" with all subfolders?`)) await this.call(M.DELETE_FOLDER, { id: f.id }); }));
@@ -194,11 +215,13 @@ GF.Sidebar = class {
       });
     const wrap = this.el("div", {}, label);
     if (open) {
-      const q = this.query.toLowerCase();
       for (const c of this.convsIn(f.id)) {
-        if (q && !c.title.toLowerCase().includes(q) && !f.name.toLowerCase().includes(q)) continue;
+        if (!this.convMatch(c, f)) continue;
         const a = this.el("a", { className: "conv", href: this.adapter.conversationUrl(c.convId), title: c.title },
-          this.el("span", { className: "name", textContent: "💬 " + (c.title || c.convId) }));
+          this.el("span", { className: "name", textContent: "💬 " + (c.title || c.convId) }), this.chips(c));
+        const tg = this.el("button", { className: "mini", textContent: "#", title: "Tags" });
+        tg.onclick = (e) => { e.preventDefault(); e.stopPropagation(); this.editTags("conv", c.key, c.tags); };
+        a.append(tg);
         a.style.paddingLeft = (20 + depth * 12) + "px";
         const x = this.el("button", { className: "mini", textContent: "✕", title: "Remove from folder" });
         x.onclick = (e) => { e.preventDefault(); e.stopPropagation(); this.call(M.UNASSIGN_CONV, { key: c.key }); };
@@ -255,8 +278,9 @@ GF.Sidebar = class {
   exportJson() {
     const data = {
       app: "grok-folders", schema: GF.SCHEMA_VERSION, exportedAt: new Date().toISOString(),
-      folders: Object.values(this.state.folders).map(({ id, name, parentId, order }) => ({ id, name, parentId, order })),
-      conversations: Object.values(this.state.convs).map(({ provider, convId, folderId, title, order }) => ({ provider, convId, folderId, title, order }))
+      tags: Object.values(this.state.tags).map(({ id, name, color }) => ({ id, name, color: GF.PALETTE[color] || null })),
+      folders: Object.values(this.state.folders).map(({ id, name, parentId, order, color, tags }) => ({ id, name, parentId, order, color: GF.PALETTE[color] || null, tags: tags || [] })),
+      conversations: Object.values(this.state.convs).map(({ provider, convId, folderId, title, order, tags }) => ({ provider, convId, folderId, title, order, tags: tags || [] }))
     };
     const d = new Date(), pad = (n) => String(n).padStart(2, "0");
     const name = `grok-folders-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.json`;
@@ -278,22 +302,122 @@ GF.Sidebar = class {
     if (!mode) return;
     if (mode === "replace" && !(await this.dialog("Really delete all current folders and replace them?", [["Replace", true], ["Cancel", null]]))) return;
     const r = await this.call(GF.MSG.IMPORT, { data, mode });
-    if (r.ok) this.dialog(`Folders: ${r.result.foldersAdded} added, ${r.result.foldersSkipped} already present.\nConversations: ${r.result.conversationsAdded} added, ${r.result.conversationsSkipped} already present.`, [["OK", null]]);
+    if (r.ok) this.dialog(`Tags: ${r.result.tagsAdded} added, ${r.result.tagsSkipped} already present.\nFolders: ${r.result.foldersAdded} added, ${r.result.foldersSkipped} already present.\nConversations: ${r.result.conversationsAdded} added, ${r.result.conversationsSkipped} already present.\nUpdated (tags/colors): ${r.result.updated}.`, [["OK", null]]);
   }
 
-  /* Minimal in-panel modal; resolves with the chosen button's value. */
-  dialog(text, buttons) {
+  /* ---- In-panel modals (rendered in this.layer so re-renders don't close them) ---- */
+  modal(build) {
     if (!this.panel.classList.contains("open")) this.togglePanel();
     return new Promise((resolve) => {
-      const box = this.el("div", { className: "dlg" });
-      const msg = this.el("div", { className: "dlg-text", textContent: text });
-      const row = this.el("div", { className: "row" }, ...buttons.map(([label, val]) => {
-        const b = this.el("button", { textContent: label });
-        b.onclick = () => { box.remove(); resolve(val); };
+      const card = this.el("div", { className: "dlg-card" });
+      const box = this.el("div", { className: "dlg" }, card);
+      const close = (val) => { box.remove(); resolve(val); };
+      build(card, close);
+      this.layer.appendChild(box);
+    });
+  }
+  dialog(text, buttons) {
+    return this.modal((card, close) => card.append(
+      this.el("div", { className: "dlg-text", textContent: text }),
+      this.el("div", { className: "row" }, ...buttons.map(([label, val]) => { const b = this.el("button", { textContent: label }); b.onclick = () => close(val); return b; }))));
+  }
+
+  /* ---- Colors & tags ---- */
+  swatch(idx, size = 12) {
+    const c = GF.PALETTE[idx];
+    const s = this.el("span", { className: "sw" + (c ? "" : " none") });
+    s.style.width = s.style.height = size + "px";
+    if (c) s.style.background = c;
+    return s;
+  }
+  folderIcon(f) {
+    const i = this.el("span", { className: "ficon", title: "Folder color" });
+    if (GF.PALETTE[f.color]) i.style.setProperty("--fc", GF.PALETTE[f.color]);
+    i.onclick = async (e) => {
+      e.stopPropagation();
+      const c = await this.pickColor(f.color, "Folder color");
+      if (c !== undefined) this.call(GF.MSG.SET_COLOR, { id: f.id, color: c });
+    };
+    return i;
+  }
+  pickColor(current, title = "Color") {
+    return this.modal((card, close) => {
+      const grid = this.el("div", { className: "swgrid" }, ...GF.PALETTE.map((_, i) => {
+        const b = this.el("button", { className: "swbtn" + (i === (current || 0) ? " cur" : ""), title: i ? GF.PALETTE[i] : "None" }, this.swatch(i, 16));
+        b.onclick = () => close(i);
         return b;
       }));
-      box.append(this.el("div", { className: "dlg-card" }, msg, row));
-      this.panel.appendChild(box);
+      const cancel = this.el("button", { textContent: "Cancel" }); cancel.onclick = () => close(undefined);
+      card.append(this.el("b", { textContent: title }), grid, cancel);
+    });
+  }
+  chips(x) {
+    const ids = (x.tags || []).filter(id => this.state.tags[id]);
+    const box = this.el("span", { className: "chips" });
+    for (const id of ids) {
+      const t = this.state.tags[id];
+      const ch = this.el("span", { className: "chip" + (this.tagFilter === id ? " on" : ""), textContent: t.name, title: "Filter by #" + t.name });
+      ch.style.background = GF.PALETTE[t.color] || "#555";
+      ch.onclick = (e) => { e.preventDefault(); e.stopPropagation(); this.tagFilter = this.tagFilter === id ? null : id; this.render(); };
+      box.append(ch);
+    }
+    return box;
+  }
+  nextColor() { return (Object.keys(this.state.tags).length % (GF.PALETTE.length - 1)) + 1; }
+
+  /* Choose tags for a conversation or folder; can create new tags inline. */
+  async editTags(target, id, current) {
+    const sel = new Set(current || []);
+    const res = await this.modal((card, close) => {
+      const list = this.el("div", { className: "taglist" });
+      const draw = () => list.replaceChildren(...Object.values(this.state.tags).sort((a, b) => a.name.localeCompare(b.name)).map(t => {
+        const cb = this.el("input", { type: "checkbox", checked: sel.has(t.id) });
+        cb.onchange = () => { cb.checked ? sel.add(t.id) : sel.delete(t.id); };
+        return this.el("label", { className: "tagrow" }, cb, this.swatch(t.color), this.el("span", { textContent: t.name }));
+      }), ...(Object.keys(this.state.tags).length ? [] : [this.el("div", { className: "empty", textContent: "No tags yet" })]));
+      draw();
+      const inp = this.el("input", { placeholder: "New tag…" });
+      const add = this.el("button", { textContent: "Add" });
+      add.onclick = async () => {
+        const name = inp.value.trim(); if (!name) return;
+        const r = await this.call(GF.MSG.CREATE_TAG, { name, color: this.nextColor() });
+        if (r.ok) { sel.add(r.result); inp.value = ""; draw(); }
+      };
+      inp.onkeydown = (e) => { if (e.key === "Enter") add.onclick(); };
+      this.live = draw; // redraw when the new tag arrives via state broadcast
+      const save = this.el("button", { textContent: "Save" }); save.onclick = () => { this.live = null; close([...sel]); };
+      const cancel = this.el("button", { textContent: "Cancel" }); cancel.onclick = () => { this.live = null; close(null); };
+      card.append(this.el("b", { textContent: "Tags" }), list, this.el("div", { className: "row" }, inp, add), this.el("div", { className: "row" }, save, cancel));
+    });
+    if (res) this.call(GF.MSG.SET_TAGS, { target, id, tagIds: res });
+  }
+
+  /* Manage tags: create / rename / recolor / delete. Live-refreshes on state changes. */
+  manageTags() {
+    const M = GF.MSG;
+    this.modal((card, close) => {
+      const list = this.el("div", { className: "taglist" });
+      const usage = (id) => [...Object.values(this.state.convs), ...Object.values(this.state.folders)].filter(x => (x.tags || []).includes(id)).length;
+      const draw = () => list.replaceChildren(...Object.values(this.state.tags).sort((a, b) => a.name.localeCompare(b.name)).map(t => {
+        const sw = this.el("button", { className: "swbtn", title: "Color" }, this.swatch(t.color, 14));
+        sw.onclick = async () => { const c = await this.pickColor(t.color, "Tag color"); if (c !== undefined) this.call(M.UPDATE_TAG, { id: t.id, color: c }); };
+        const name = this.el("input", { value: t.name, title: "Rename (Enter)" });
+        const commit = () => { if (name.value.trim() && name.value.trim() !== t.name) this.call(M.UPDATE_TAG, { id: t.id, name: name.value }); };
+        name.onkeydown = (e) => { if (e.key === "Enter") commit(); };
+        name.onblur = commit;
+        const n = usage(t.id);
+        const del = this.el("button", { className: "mini", textContent: "🗑", title: "Delete tag" });
+        del.onclick = async () => { if (await this.dialog(`Delete tag "${t.name}"? It is used on ${n} item(s).`, [["Delete", true], ["Cancel", false]])) this.call(M.DELETE_TAG, { id: t.id }); };
+        return this.el("div", { className: "tagrow" }, sw, name, this.el("span", { className: "cnt", textContent: String(n) }), del);
+      }), ...(Object.keys(this.state.tags).length ? [] : [this.el("div", { className: "empty", textContent: "No tags yet" })]));
+      draw();
+      this.live = draw;
+      const inp = this.el("input", { placeholder: "New tag…" });
+      const add = this.el("button", { textContent: "Add" });
+      add.onclick = async () => { const v = inp.value.trim(); if (v && (await this.call(M.CREATE_TAG, { name: v, color: this.nextColor() })).ok) inp.value = ""; };
+      inp.onkeydown = (e) => { if (e.key === "Enter") add.onclick(); };
+      const done = this.el("button", { textContent: "Close" }); done.onclick = () => { this.live = null; close(); };
+      card.append(this.el("b", { textContent: "Manage tags" }), list, this.el("div", { className: "row" }, inp, add), done);
     });
   }
 
@@ -329,5 +453,19 @@ button{background:#2b2b2b;color:#eee;border:1px solid #444;border-radius:6px;pad
 .dlg{position:absolute;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;border-radius:10px;padding:10px}
 .dlg-card{background:#222;border:1px solid #444;border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px}
 .dlg-text{white-space:pre-wrap}
+.dlg-card{max-height:100%;overflow:auto;min-width:200px}
+.ficon{display:inline-block;width:14px;height:10px;margin:0 3px;border-radius:1px 3px 2px 2px;background:var(--fc,#8a8a8a);position:relative;flex:none;cursor:pointer}
+.ficon::before{content:"";position:absolute;left:0;top:-3px;width:6px;height:3px;border-radius:2px 2px 0 0;background:var(--fc,#8a8a8a)}
+.chips{display:inline-flex;gap:2px;flex:none;max-width:45%;overflow:hidden}
+.chip{font-size:10px;line-height:14px;padding:0 5px;border-radius:7px;color:#fff;cursor:pointer;white-space:nowrap;text-shadow:0 0 2px #0008}
+.chip.on{outline:1px solid #fff}
+.sw{display:inline-block;border-radius:50%;flex:none}.sw.none{border:1px dashed #888}
+.swgrid{display:grid;grid-template-columns:repeat(6,auto);gap:4px}
+.swbtn{padding:3px;line-height:0}.swbtn.cur{outline:2px solid #4a7cff}
+.taglist{display:flex;flex-direction:column;gap:3px;max-height:200px;overflow:auto}
+.tagrow{display:flex;align-items:center;gap:6px}.tagrow input:not([type]){flex:1;padding:2px 6px}
+.cnt{color:#888;font-size:11px;min-width:16px;text-align:right}
+select.tagsel{max-width:40%;background:#111;color:#eee;border:1px solid #444;border-radius:6px}
+.conv .name{flex:1;overflow:hidden;text-overflow:ellipsis}
 .empty,.footer{color:#888;font-size:11px;padding:4px}
 `;

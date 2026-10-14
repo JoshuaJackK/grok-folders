@@ -23,7 +23,7 @@ function placeConv(st, { provider, convId, title, folderId, targetKey, position 
   if (!st.folders[folderId]) throw new Error("folder not found");
   const key = provider + ":" + convId;
   const prev = st.convs[key];
-  const c = { key, provider, convId, folderId, title: String(title || (prev && prev.title) || "").slice(0, 80), order: 0 };
+  const c = { key, provider, convId, folderId, title: String(title || (prev && prev.title) || "").slice(0, 80), order: 0, tags: prev ? prev.tags || [] : [] };
   delete st.convs[key];
   const sib = sortedConvs(st, folderId);
   let index = sib.length;
@@ -33,6 +33,9 @@ function placeConv(st, { provider, convId, title, folderId, targetKey, position 
   placeAt(sib, c, index);
   if (prev && prev.folderId !== folderId) renumber(sortedConvs(st, prev.folderId));
 }
+
+const cleanTagName = (n) => { const s = String(n || "").trim().slice(0, 30); if (!s) throw new Error("Tag name required"); return s; };
+const findTag = (st, name) => Object.values(st.tags || {}).find(t => t.name.toLowerCase() === name.trim().toLowerCase());
 
 async function broadcast() {
   const tabs = await browser.tabs.query({ url: "https://grok.com/*" });
@@ -44,7 +47,7 @@ const handlers = {
   [M.CREATE_FOLDER]: async (st, { name, parentId = null }) => {
     if (parentId && !st.folders[parentId]) throw new Error("parent not found");
     const order = Object.values(st.folders).filter(f => f.parentId === parentId).length;
-    const id = uid(); st.folders[id] = { id, name: String(name).slice(0, 100), parentId, order };
+    const id = uid(); st.folders[id] = { id, name: String(name).slice(0, 100), parentId, order, color: 0, tags: [] };
     return id;
   },
   [M.RENAME_FOLDER]: async (st, { id, name }) => { st.folders[id].name = String(name).slice(0, 100); },
@@ -78,6 +81,34 @@ const handlers = {
     return placeConv(st, { provider: c.provider, convId: c.convId, title: c.title, folderId, targetKey, position });
   },
   [M.UNASSIGN_CONV]: async (st, { key }) => { delete st.convs[key]; },
+  /* ---- colors & tags ---- */
+  [M.SET_COLOR]: async (st, { id, color }) => { const f = st.folders[id]; if (!f) throw new Error("folder not found"); f.color = GF.colorIndex(color); },
+  [M.CREATE_TAG]: async (st, { name, color = 0 }) => {
+    const n = cleanTagName(name);
+    const dup = findTag(st, n); if (dup) return dup.id;
+    st.tags = st.tags || {};
+    const id = uid(); st.tags[id] = { id, name: n, color: GF.colorIndex(color) };
+    return id;
+  },
+  [M.UPDATE_TAG]: async (st, { id, name, color }) => {
+    const t = st.tags[id]; if (!t) throw new Error("tag not found");
+    if (name !== undefined) {
+      const n = cleanTagName(name), dup = findTag(st, n);
+      if (dup && dup.id !== id) throw new Error(`Tag "${n}" already exists`);
+      t.name = n;
+    }
+    if (color !== undefined) t.color = GF.colorIndex(color);
+  },
+  [M.DELETE_TAG]: async (st, { id }) => {
+    delete st.tags[id];
+    for (const x of [...Object.values(st.folders), ...Object.values(st.convs)]) if (x.tags) x.tags = x.tags.filter(t => t !== id);
+  },
+  /* target: "conv" (id = conv key) | "folder" (id = folder id); tagIds replaces the set. */
+  [M.SET_TAGS]: async (st, { target, id, tagIds }) => {
+    const obj = target === "folder" ? st.folders[id] : st.convs[id];
+    if (!obj) throw new Error(target + " not found");
+    obj.tags = [...new Set(tagIds)].filter(t => st.tags[t]);
+  },
   [M.IMPORT]: async (st, { data, mode }) => importData(st, validateImport(data), mode)
 };
 
@@ -86,12 +117,20 @@ function validateImport(d) {
   if (!d || d.app !== "grok-folders") throw new Error("Not a grok-folders export file");
   if (typeof d.schema !== "number" || d.schema > GF.SCHEMA_VERSION) throw new Error("Unsupported schema: " + d.schema);
   if (!Array.isArray(d.folders) || !Array.isArray(d.conversations)) throw new Error("folders/conversations must be arrays");
+  if (d.tags !== undefined && !Array.isArray(d.tags)) throw new Error("tags must be an array");
+  const tagIds = new Set();
+  const tags = (d.tags || []).filter((t, i) => {
+    if (!t || typeof t.id !== "string" || typeof t.name !== "string" || !t.name.trim()) throw new Error("Invalid tag #" + i);
+    if (tagIds.has(t.id)) return false;
+    tagIds.add(t.id); return true;
+  }).map(t => ({ id: t.id, name: t.name.trim().slice(0, 30), color: GF.colorIndex(t.color) }));
+  const tagList = (a) => Array.isArray(a) ? [...new Set(a.filter(x => tagIds.has(x)))] : [];
   const ids = new Set();
   const folders = d.folders.map((f, i) => {
     if (!f || typeof f.id !== "string" || !f.id || typeof f.name !== "string") throw new Error("Invalid folder #" + i);
     if (ids.has(f.id)) throw new Error("Duplicate folder id " + f.id);
     ids.add(f.id);
-    return { id: f.id, name: f.name.slice(0, 100), parentId: typeof f.parentId === "string" ? f.parentId : null, order: Number.isFinite(f.order) ? f.order : i };
+    return { id: f.id, name: f.name.slice(0, 100), parentId: typeof f.parentId === "string" ? f.parentId : null, order: Number.isFinite(f.order) ? f.order : i, color: GF.colorIndex(f.color), tags: tagList(f.tags) };
   });
   for (const f of folders) if (f.parentId && !ids.has(f.parentId)) f.parentId = null; // orphan -> root
   for (const f of folders) { // break cycles
@@ -101,48 +140,66 @@ function validateImport(d) {
   const conversations = d.conversations.filter((c, i) => {
     if (!c || typeof c.convId !== "string" || !c.convId || typeof c.folderId !== "string") throw new Error("Invalid conversation #" + i);
     return ids.has(c.folderId);
-  }).map(c => ({ provider: typeof c.provider === "string" && c.provider ? c.provider : "grok", convId: c.convId, folderId: c.folderId, title: String(c.title || "").slice(0, 80), order: Number.isFinite(c.order) ? c.order : Infinity }));
-  return { folders, conversations };
+  }).map(c => ({ provider: typeof c.provider === "string" && c.provider ? c.provider : "grok", convId: c.convId, folderId: c.folderId, title: String(c.title || "").slice(0, 80), order: Number.isFinite(c.order) ? c.order : Infinity, tags: tagList(c.tags) }));
+  return { tags, folders, conversations };
 }
 
 /*
- * Idempotent import. Folders are processed parents-first:
- *  1. same id already exists      -> same folder (reuse, nothing changed)
- *  2. same name under same mapped parent -> reuse existing folder
- *  3. otherwise create it (keeps its id; ids are unique since rule 1 didn't match)
- * Conversations: add into the mapped folder if not present; existing ones are kept.
+ * Idempotent import.
+ * Tags: matched by name (case-insensitive) -> reuse; else created (file id kept unless it collides).
+ * Folders (parents first): same id -> same folder; else same name under same mapped parent -> reuse;
+ *   else create. Reused folders: tags are unioned, color only filled in if they had none.
+ * Conversations: new ones added into the mapped folder; existing ones keep their folder, tags are unioned.
  * Importing the same export twice yields zero changes.
  */
-function importData(st, { folders, conversations }, mode) {
-  if (mode === "replace") { st.folders = {}; st.convs = {}; }
+function importData(st, { tags, folders, conversations }, mode) {
+  if (mode === "replace") { st.folders = {}; st.convs = {}; st.tags = {}; }
   else if (mode !== "merge") throw new Error("mode must be replace or merge");
+  st.tags = st.tags || {};
+  const res = { tagsAdded: 0, tagsSkipped: 0, foldersAdded: 0, foldersSkipped: 0, conversationsAdded: 0, conversationsSkipped: 0, updated: 0 };
+  const tagMap = {};
+  for (const t of tags) {
+    const ex = findTag(st, t.name);
+    if (ex) { tagMap[t.id] = ex.id; res.tagsSkipped++; continue; }
+    const id = st.tags[t.id] ? uid() : t.id;
+    st.tags[id] = { id, name: t.name, color: t.color }; tagMap[t.id] = id; res.tagsAdded++;
+  }
+  const mapTags = (a) => a.map(x => tagMap[x]).filter(Boolean);
+  const union = (obj, add) => {
+    const cur = obj.tags || [], next = [...new Set([...cur, ...add])];
+    if (next.length !== cur.length) { obj.tags = next; return true; }
+    return false;
+  };
   const byId = Object.fromEntries(folders.map(f => [f.id, f]));
   const depth = (f) => { let d = 0; while (f.parentId) { f = byId[f.parentId]; d++; } return d; };
   const ordered = [...folders].sort((x, y) => depth(x) - depth(y) || x.order - y.order);
   const norm = (n) => n.trim().toLowerCase();
   const remap = {};
-  const res = { foldersAdded: 0, foldersSkipped: 0, conversationsAdded: 0, conversationsSkipped: 0 };
   for (const f of ordered) {
     const parentId = f.parentId ? remap[f.parentId] : null;
-    if (st.folders[f.id]) { remap[f.id] = f.id; res.foldersSkipped++; continue; }
-    const same = Object.values(st.folders).find(x => x.parentId === parentId && norm(x.name) === norm(f.name));
-    if (same) { remap[f.id] = same.id; res.foldersSkipped++; continue; }
+    const ex = st.folders[f.id] || Object.values(st.folders).find(x => x.parentId === parentId && norm(x.name) === norm(f.name));
+    if (ex) {
+      remap[f.id] = ex.id; res.foldersSkipped++;
+      let changed = union(ex, mapTags(f.tags));
+      if (!ex.color && f.color) { ex.color = f.color; changed = true; }
+      if (changed) res.updated++;
+      continue;
+    }
     const order = Object.values(st.folders).filter(x => x.parentId === parentId).length;
-    st.folders[f.id] = { id: f.id, name: f.name, parentId, order };
+    st.folders[f.id] = { id: f.id, name: f.name, parentId, order, color: f.color, tags: mapTags(f.tags) };
     remap[f.id] = f.id; res.foldersAdded++;
   }
   for (const c of conversations) {
     const key = c.provider + ":" + c.convId;
-    if (st.convs[key]) { res.conversationsSkipped++; continue; }
+    if (st.convs[key]) { res.conversationsSkipped++; if (union(st.convs[key], mapTags(c.tags))) res.updated++; continue; }
     const fid = remap[c.folderId];
     const order = Number.isFinite(c.order) ? c.order : sortedConvs(st, fid).length;
-    st.convs[key] = { key, provider: c.provider, convId: c.convId, folderId: fid, title: c.title, order };
+    st.convs[key] = { key, provider: c.provider, convId: c.convId, folderId: fid, title: c.title, order, tags: mapTags(c.tags) };
     res.conversationsAdded++;
   }
   for (const fid of new Set(Object.values(st.convs).map(c => c.folderId))) renumber(sortedConvs(st, fid));
   return res;
 }
-
 
 // Serialize all mutations: concurrent handlers would otherwise clone the same state
 // and the last write would silently drop the other change.
