@@ -23,4 +23,8 @@
   });
   const r = await api(GF.MSG.GET_STATE);
   if (r.ok) sidebar.setState(r.state, r.mode);
+
+  // Keep saved conversation titles in sync with the page.
+  sidebar.titleWatcher = new GF.TitleWatcher(adapter, () => sidebar.state, api, { debounceMs: GF.titleDebounceMs });
+  sidebar.titleWatcher.start();
 })();

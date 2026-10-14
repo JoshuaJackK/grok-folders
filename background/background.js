@@ -23,7 +23,7 @@ function placeConv(st, { provider, convId, title, folderId, targetKey, position 
   if (!st.folders[folderId]) throw new Error("folder not found");
   const key = provider + ":" + convId;
   const prev = st.convs[key];
-  const c = { key, provider, convId, folderId, title: String(title || (prev && prev.title) || "").slice(0, 80), order: 0, tags: prev ? prev.tags || [] : [] };
+  const c = { key, provider, convId, folderId, title: String(title || (prev && prev.title) || "").slice(0, GF.TITLE_MAX), order: 0, tags: prev ? prev.tags || [] : [] };
   delete st.convs[key];
   const sib = sortedConvs(st, folderId);
   let index = sib.length;
@@ -109,6 +109,17 @@ const handlers = {
     if (!obj) throw new Error(target + " not found");
     obj.tags = [...new Set(tagIds)].filter(t => st.tags[t]);
   },
+  /* Batch title refresh for saved conversations only. Returns { changed }; 0 => no write. */
+  [M.UPDATE_TITLES]: async (st, { provider, titles }) => {
+    let changed = 0;
+    for (const [convId, raw] of Object.entries(titles || {})) {
+      const c = st.convs[provider + ":" + convId];
+      const t = String(raw || "").trim().slice(0, GF.TITLE_MAX);
+      if (!c || !t || c.title === t) continue;
+      c.title = t; changed++;
+    }
+    return { changed };
+  },
   [M.IMPORT]: async (st, { data, mode }) => importData(st, validateImport(data), mode)
 };
 
@@ -140,7 +151,7 @@ function validateImport(d) {
   const conversations = d.conversations.filter((c, i) => {
     if (!c || typeof c.convId !== "string" || !c.convId || typeof c.folderId !== "string") throw new Error("Invalid conversation #" + i);
     return ids.has(c.folderId);
-  }).map(c => ({ provider: typeof c.provider === "string" && c.provider ? c.provider : "grok", convId: c.convId, folderId: c.folderId, title: String(c.title || "").slice(0, 80), order: Number.isFinite(c.order) ? c.order : Infinity, tags: tagList(c.tags) }));
+  }).map(c => ({ provider: typeof c.provider === "string" && c.provider ? c.provider : "grok", convId: c.convId, folderId: c.folderId, title: String(c.title || "").slice(0, GF.TITLE_MAX), order: Number.isFinite(c.order) ? c.order : Infinity, tags: tagList(c.tags) }));
   return { tags, folders, conversations };
 }
 
@@ -219,6 +230,7 @@ browser.runtime.onMessage.addListener((msg) => {
       if (msg.type === M.GET_STATE) return { ok: true, ...(await h()) };
       const st = structuredClone(S.get());
       const result = await h(st, msg.payload || {});
+      if (result && result.changed === 0) return { ok: true, result }; // nothing changed: skip write
       await S.save(st); broadcast();
       return { ok: true, result };
     } catch (e) { return { ok: false, error: e.message }; }

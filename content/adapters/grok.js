@@ -11,6 +11,37 @@ GF.registerAdapter({
     convLink: 'a[href^="/c/"]',            // GUESS: sidebar history links
     title: "h1, [data-testid='conversation-title']" // GUESS
   },
+  // GUESS: placeholder titles Grok shows before a real title exists (never stored).
+  placeholderRe: /^(new chat|new conversation|untitled|grok|novi klepet|nov pogovor)$/i,
+  isPlaceholder(title, convId) {
+    const t = (title || "").trim();
+    return !t || t === convId || this.placeholderRe.test(t);
+  },
+  /* Clean visible link text (GUESS: link may contain extra nodes like timestamps/menus). */
+  linkTitle(a) {
+    const el = a.querySelector("[data-testid='conversation-title'], .truncate, span") || a; // GUESS
+    const clean = (n) => (n.textContent || "").replace(/\s+/g, " ").trim();
+    return clean(el) || clean(a);
+  },
+  /*
+   * Collect current titles visible on the page: Map<convId, title>.
+   * Sources: history links (/c/<id>) and the open conversation (document.title).
+   * includeDocTitle=false when document.title may still belong to the previous conversation.
+   */
+  collectTitles({ includeDocTitle = true } = {}) {
+    const out = new Map();
+    for (const a of document.querySelectorAll(this.selectors.convLink)) {
+      const id = this.idFromPath(new URL(a.href, location.origin).pathname);
+      const t = this.linkTitle(a);
+      if (id && !this.isPlaceholder(t, id)) out.set(id, t);
+    }
+    const cur = this.idFromPath(location.pathname);
+    if (includeDocTitle && cur && !out.has(cur)) {
+      const t = document.title.replace(/\s*[-|–]\s*Grok.*$/i, "").trim(); // GUESS: "<title> - Grok"
+      if (!this.isPlaceholder(t, cur)) out.set(cur, t);
+    }
+    return out;
+  },
   get conversationLinkSelector() { return this.selectors.convLink; },
   matches: (loc) => loc.hostname === "grok.com",
   idFromPath(path) { const m = /^\/c\/([^/?#]+)/.exec(path); return m ? m[1] : null; },

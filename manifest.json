@@ -38,6 +38,7 @@
         "content/adapters/base.js",
         "content/adapters/grok.js",
         "content/sidebar.js",
+        "content/titles.js",
         "content/content.js"
       ],
       "run_at": "document_idle"

@@ -31,7 +31,8 @@ function boot(url = "https://grok.com/c/c0") {
   w.Element.prototype.setPointerCapture = w.Element.prototype.releasePointerCapture = function () {}; // not in jsdom
   // Simulate Grok's "type anywhere -> focus composer" handler.
   w.document.addEventListener("keydown", () => w.document.getElementById("composer").focus());
-  for (const f of ["shared/constants.js", "content/adapters/base.js", "content/adapters/grok.js", "content/sidebar.js", "content/content.js"])
+  w.eval("var GF = globalThis.GF = { titleDebounceMs: 30 };");
+  for (const f of require(path.join(R, "manifest.json")).content_scripts[0].js)
     w.eval(fs.readFileSync(path.join(R, f), "utf8"));
   const root = () => w.document.getElementById("grok-folders-host").shadowRoot;
   const broadcast = () => onMsg({ type: "gf:stateChanged", state: structuredClone(STATE), mode: "sync" });

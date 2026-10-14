@@ -16,6 +16,7 @@ GF.MSG = {
   UPDATE_TAG: "gf:updateTag",
   DELETE_TAG: "gf:deleteTag",
   SET_TAGS: "gf:setTags",
+  UPDATE_TITLES: "gf:updateTitles",
   STATE_CHANGED: "gf:stateChanged"
 };
 /* Color palette; stored as index (0 = none) to keep storage.sync compact. */
@@ -25,3 +26,4 @@ GF.colorIndex = (c) => {
   if (typeof c === "string") { const i = GF.PALETTE.indexOf(c.toLowerCase()); return i > 0 ? i : 0; }
   return 0;
 };
+GF.TITLE_MAX = 80; // stored title length (storage.sync quota)

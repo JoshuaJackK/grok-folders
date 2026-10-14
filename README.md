@@ -12,6 +12,7 @@ Razširitev za Firefox (Manifest V3), ki pogovore na grok.com razvrsti v mape z 
 - Iskanje po naslovih pogovorov in imenih map.
 - **Barve map** (paleta 10 barv + brez): klik na ikono mape.
 - **Oznake (tagi)** z imenom in barvo: gumb `#` na pogovoru/mapi (izbira, ustvarjanje), upravljanje v „Tags“ (preimenuj, prebarvaj, izbriši). Prikaz kot barvni čipi; klik na čip ali izbirnik „All tags“ filtrira; iskanje upošteva tudi imena oznak.
+- **Samodejno posodabljanje naslovov** shranjenih pogovorov (`content/titles.js`): naslovi se berejo iz Grokovega seznama zgodovine (`/c/<id>`) in iz naslova odprtega pogovora; MutationObserver + preverjanje SPA navigacije, debounce ~2 s, en paketni zapis, piše se le ob dejanski spremembi. Neshranjeni pogovori se nikoli ne dodajo; nadomestni naslovi („New chat“ ipd.) se ignorirajo; zaščita pred „ping‑pong“ prepisi med zavihki. ⚠️ Selektorji/regex za naslove so ugibanje (adapter).
 - Izvoz/uvoz JSON (gumba Export/Import): datoteka `grok-folders-LLLL-MM-DD.json` z `{app, schema, exportedAt, folders, conversations}`; uvoz z izbiro **Zamenjaj** ali **Združi** (idempotentno: mapa z istim id ali istim imenom pod istim staršem se ponovno uporabi, dodajo se le nove mape/pogovori; obstoječi pogovori ostanejo v svoji mapi).
 - Sinhronizacija prek `browser.storage.sync`, z rezervo v `browser.storage.local`.
 
@@ -24,6 +25,7 @@ background/background.js EDINI lastnik shrambe; obdela sporočila, oddaja spreme
                          posluša storage.onChanged (sync iz drugih naprav)
 content/adapters/base.js vmesnik ponudnika (provider adapter) + registracija
 content/adapters/grok.js adapter za grok.com (VSI Grok selektorji so tu)
+content/titles.js        samodejno posodabljanje naslovov (TitleWatcher)
 content/sidebar.js       UI v zaprtem shadow rootu (brez innerHTML)
 content/content.js       vstopna točka: adapter + UI + runtime.sendMessage
 ```
@@ -67,6 +69,6 @@ Lint: `npx web-ext lint` · Zagon: `npx web-ext run`
 2. Ob prvem zagonu zahtevati host permission (`permissions.request`), če ni odobren.
 4. Sporočanje stanja in konflikti pri sync: merge po `ts` namesto „zadnji zapis zmaga“; preklop nazaj iz local v sync.
 5. Stran z nastavitvami.
-6. Testi: `node tests/import.test.js`, `node tests/move.test.js`, `node tests/tags.test.js`, `node tests/ui.test.js` (jsdom); dodati še `encode/decode/chunk`.
+6. Testi: `node tests/import.test.js`, `node tests/move.test.js`, `node tests/tags.test.js`, `node tests/ui.test.js`, `node tests/titles.test.js` (jsdom); dodati še `encode/decode/chunk`.
 7. Adapterji za druge ponudnike (ChatGPT, Claude) prek istega vmesnika.
 8. Zamenjava `prompt/confirm` z lastnimi dialogi v shadow DOM; i18n (`_locales`).

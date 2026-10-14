@@ -6,6 +6,8 @@
  *   currentConversation(): {convId, title} | null
  *   parseConvLink(anchorEl): {convId, title} | null
  *   conversationUrl(convId): string
+ *   collectTitles(): Map<convId,title>   titles visible on the page (placeholders excluded)
+ *   isPlaceholder(title, convId): bool
  *   navigate(convId): void          in-app (SPA) navigation when possible
  *   conversationLinkSelector: CSS selector for draggable conversation links
  */
