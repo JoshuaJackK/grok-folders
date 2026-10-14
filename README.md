@@ -17,6 +17,9 @@ Podprte strani (vsaka ima svoj adapter v `content/adapters/`):
 ## Funkcije (MVP)
 - Gumb 📁 lahko premakneš z miško (položaj se shrani lokalno v `storage.local` pod `uiPos`); dvoklik ga ponastavi.
 - Plošča ostane odprta med navigacijo (klik na pogovor uporabi Grokovo SPA navigacijo) in po ponovnem nalaganju; stanje (odprta/zaprta, zaprte mape) je v `storage.local` (`uiState`). Zapre se le z gumbom 📁 ali tipko Esc.
+- **Velikost plošče**: ročaji na desnem robu, spodnjem robu in spodnjem desnem kotu (min/max, prilagojeno oknu); shrani se lokalno (`uiSize`), dvoklik na ročaj ponastavi.
+- **Pisava** (⚙ v glavi plošče): velikost 11–18 px in družina (System, Sans, Humanist, Rounded, Serif, Mono – samo lokalne pisave); shrani se v `storage.sync` (`uiPrefs`, nekaj bajtov).
+- **⊟ / ⊞**: strni / razširi vse mape (stanje se ohrani).
 - Lastna stranska plošča (gumb 📁 levo zgoraj, poleg Grokovega menija; odmik nastaviš v `GF_POS` na vrhu `content/sidebar.js`), izolirana v **shadow DOM**.
 - Ustvarjanje, preimenovanje in brisanje map (brisanje je **rekurzivno**: podmape in dodelitve).
 - Neomejeno gnezdenje. Vleci in spusti v drevesu: mape in pogovore premikaš med mapami in jih razvrščaš (zgornja/spodnja ~25 % vrstice = pred/za – prikaže se črta; sredina = v mapo – obroba). Polje „⤒ Top level“ premakne mapo na koren. Zaprta mapa se med vlečenjem odpre po ~600 ms. Mape ni mogoče premakniti v lastno poddrevo.
@@ -88,6 +91,6 @@ Lint: `npx web-ext lint` · Zagon: `npx web-ext run`
 2. Ob prvem zagonu zahtevati host permission (`permissions.request`), če ni odobren.
 4. Sporočanje stanja in konflikti pri sync: merge po `ts` namesto „zadnji zapis zmaga“; preklop nazaj iz local v sync.
 5. Stran z nastavitvami.
-6. Testi: `node tests/import.test.js`, `node tests/move.test.js`, `node tests/tags.test.js`, `node tests/ui.test.js`, `node tests/titles.test.js`, `node tests/adapters.test.js`, `node tests/permissions.test.js`, `node tests/pagednd.test.js` (jsdom); dodati še `encode/decode/chunk`.
+6. Testi: `node tests/import.test.js`, `node tests/move.test.js`, `node tests/tags.test.js`, `node tests/ui.test.js`, `node tests/titles.test.js`, `node tests/adapters.test.js`, `node tests/permissions.test.js`, `node tests/pagednd.test.js`, `node tests/prefs.test.js` (jsdom); dodati še `encode/decode/chunk`.
 7. Adapterji za druge ponudnike (ChatGPT, Claude) prek istega vmesnika.
 8. Zamenjava `prompt/confirm` z lastnimi dialogi v shadow DOM; i18n (`_locales`).

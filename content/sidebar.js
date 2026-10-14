@@ -11,7 +11,11 @@ const GF_POS = {
   dragThreshold: 4,           // px of movement before a press becomes a drag
   autoExpandMs: 600,          // hover time before a collapsed folder opens during drag
   storageKey: "uiPos",        // storage.local key: button position (per-device)
-  uiStateKey: "uiState"       // storage.local key: { open, collapsed[] } (survives navigation + reloads)
+  uiStateKey: "uiState",      // storage.local key: { open, collapsed[] } (survives navigation + reloads)
+  sizeKey: "uiSize",          // storage.local key: { w, h } panel size (per device); h null = auto
+  minW: 220, maxW: 800, minH: 200, maxH: 1200,
+  prefsKey: "uiPrefs",        // storage.sync key: { fs, ff } font prefs (tiny; follows the user)
+  fontMin: 11, fontMax: 18, fontDefault: 13
 };
 GF.Sidebar = class {
   constructor(adapter, api) {
@@ -41,8 +45,92 @@ GF.Sidebar = class {
     this.root.append(this.toggle, this.panel);
     this.pos = { left: GF_POS.left, top: GF_POS.top };
     this.initDrag();
+    this.size = { w: GF_POS.panelWidth, h: null };
+    this.prefs = { fs: GF_POS.fontDefault, ff: "system" };
+    this.handles = ["r", "b", "br"].map(d => this.initResizeHandle(d));
     this.restoreUiState();
+    this.restoreSize();
+    this.restorePrefs();
   }
+
+  /* ---- Resizable panel (handles: right edge, bottom edge, bottom-right corner) ---- */
+  initResizeHandle(dir) {
+    const h = this.el("div", { className: "rz rz-" + dir, title: "Drag to resize · double-click to reset" });
+    let start = null;
+    h.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault(); e.stopPropagation();
+      const r = this.panel.getBoundingClientRect();
+      start = { x: e.clientX, y: e.clientY, w: this.size.w, h: this.size.h || Math.round(r.height) || 400 };
+      try { h.setPointerCapture(e.pointerId); } catch (_) { /* jsdom */ }
+    });
+    h.addEventListener("pointermove", (e) => {
+      if (!start) return;
+      const dx = e.clientX - start.x, dy = e.clientY - start.y;
+      this.applySize({ w: dir === "b" ? start.w : start.w + dx, h: dir === "r" ? this.size.h : start.h + dy });
+    });
+    const end = () => { if (start) { start = null; this.saveSize(); } };
+    h.addEventListener("pointerup", end);
+    h.addEventListener("pointercancel", end);
+    h.addEventListener("dblclick", (e) => { e.stopPropagation(); this.applySize({ w: GF_POS.panelWidth, h: null }); this.saveSize(); });
+    return h;
+  }
+  clampSize(sz) {
+    const m = GF_POS.margin, vw = window.innerWidth, vh = window.innerHeight;
+    const w = Math.round(Math.min(Math.max(GF_POS.minW, sz.w || GF_POS.panelWidth), GF_POS.maxW, Math.max(GF_POS.minW, vw - 2 * m)));
+    const h = sz.h == null ? null : Math.round(Math.min(Math.max(GF_POS.minH, sz.h), GF_POS.maxH, Math.max(GF_POS.minH, vh - 2 * m)));
+    return { w, h };
+  }
+  applySize(sz) { this.size = this.clampSize(sz); if (this.isOpen()) this.placePanel(); }
+  saveSize() { browser.storage.local.set({ [GF_POS.sizeKey]: this.size }).catch(() => {}); }
+  async restoreSize() {
+    try {
+      const r = await browser.storage.local.get(GF_POS.sizeKey);
+      const v = r && r[GF_POS.sizeKey];
+      if (v && Number.isFinite(v.w)) this.applySize({ w: v.w, h: Number.isFinite(v.h) ? v.h : null });
+    } catch (_) { /* ignore */ }
+  }
+
+  /* ---- Font preferences (storage.sync, tiny) ---- */
+  applyPrefs(p) {
+    const fs = Math.min(GF_POS.fontMax, Math.max(GF_POS.fontMin, Math.round(Number(p && p.fs) || GF_POS.fontDefault)));
+    const ff = GF.Sidebar.FONTS[p && p.ff] ? p.ff : "system";
+    this.prefs = { fs, ff };
+    this.panel.style.setProperty("--gf-fs", fs + "px");
+    this.panel.style.setProperty("--gf-ff", GF.Sidebar.FONTS[ff].stack);
+  }
+  savePrefs() { browser.storage.sync.set({ [GF_POS.prefsKey]: this.prefs }).catch(() => browser.storage.local.set({ [GF_POS.prefsKey]: this.prefs }).catch(() => {})); }
+  async restorePrefs() {
+    let v = null;
+    try { v = (await browser.storage.sync.get(GF_POS.prefsKey))[GF_POS.prefsKey]; } catch (_) { /* sync unavailable */ }
+    if (!v) { try { v = (await browser.storage.local.get(GF_POS.prefsKey))[GF_POS.prefsKey]; } catch (_) { /* ignore */ } }
+    this.applyPrefs(v || this.prefs);
+    if (browser.storage.onChanged) browser.storage.onChanged.addListener((ch, area) => {
+      if (area === "sync" && ch[GF_POS.prefsKey] && ch[GF_POS.prefsKey].newValue) this.applyPrefs(ch[GF_POS.prefsKey].newValue);
+    });
+  }
+  openSettings() {
+    this.modal((card, close) => {
+      const val = this.el("span", { className: "cnt", textContent: this.prefs.fs + "px" });
+      const range = this.el("input", { type: "range", min: GF_POS.fontMin, max: GF_POS.fontMax, step: 1, value: this.prefs.fs, title: "Font size" });
+      range.oninput = () => { this.applyPrefs({ ...this.prefs, fs: +range.value }); val.textContent = this.prefs.fs + "px"; };
+      range.onchange = () => this.savePrefs();
+      const fam = this.el("select", { className: "tagsel", title: "Font" },
+        ...Object.entries(GF.Sidebar.FONTS).map(([k, f]) => this.el("option", { value: k, textContent: f.label, selected: k === this.prefs.ff })));
+      fam.onchange = () => { this.applyPrefs({ ...this.prefs, ff: fam.value }); this.savePrefs(); };
+      const reset = this.el("button", { textContent: "Reset" });
+      reset.onclick = () => { this.applyPrefs({ fs: GF_POS.fontDefault, ff: "system" }); range.value = this.prefs.fs; fam.value = "system"; val.textContent = this.prefs.fs + "px"; this.savePrefs(); };
+      const done = this.el("button", { textContent: "Close" }); done.onclick = () => close();
+      card.append(this.el("b", { textContent: "Settings" }),
+        this.el("div", { className: "row" }, this.el("span", { textContent: "Size" }), range, val),
+        this.el("div", { className: "row" }, this.el("span", { textContent: "Font" }), fam),
+        this.el("div", { className: "row" }, reset, done));
+    });
+  }
+
+  /* ---- Collapse / expand all ---- */
+  collapseAll() { this.collapsed = new Set(Object.keys(this.state.folders)); this.saveUiState(); this.renderTree(); }
+  expandAll() { this.collapsed = new Set(); this.saveUiState(); this.renderTree(); }
 
   /* ---- Persistent UI state (panel open + collapsed folders) ---- */
   async restoreUiState() {
@@ -138,14 +226,18 @@ GF.Sidebar = class {
   placePanel() {
     const { left, top } = this.pos, s = GF_POS.size, g = GF_POS.panelGap, m = GF_POS.margin;
     const vw = window.innerWidth, vh = window.innerHeight, P = this.panel.style;
-    const w = Math.min(GF_POS.panelWidth, vw - 2 * m);
+    const w = Math.min(this.size ? this.size.w : GF_POS.panelWidth, vw - 2 * m);
     P.width = w + "px";
     const x = left + w > vw - m ? left + s - w : left;
     P.left = Math.max(m, Math.min(x, vw - w - m)) + "px";
     const below = vh - (top + s + g) - m, above = top - g - m;
     P.top = P.bottom = "";
-    if (below >= GF_POS.panelMinHeight || below >= above) { P.top = (top + s + g) + "px"; P.maxHeight = Math.max(below, 120) + "px"; }
-    else { P.bottom = (vh - top + g) + "px"; P.maxHeight = above + "px"; }
+    const want = this.size && this.size.h;
+    let room;
+    if (below >= (want || GF_POS.panelMinHeight) || below >= above) { P.top = (top + s + g) + "px"; room = Math.max(below, 120); }
+    else { P.bottom = (vh - top + g) + "px"; room = above; }
+    P.maxHeight = room + "px";
+    P.height = want ? Math.min(want, room) + "px" : "";
   }
   el(tag, props = {}, ...kids) { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; }
   setState(state, mode) {
@@ -202,7 +294,12 @@ GF.Sidebar = class {
     file.onchange = () => { const f = file.files[0]; file.value = ""; if (f) this.importJson(f); };
     this.tree = this.el("div", { className: "tree" });
     const footer = this.el("div", { className: "footer", textContent: "storage: " + this.mode });
-    this.panel.replaceChildren(this.el("div", { className: "head" }, this.el("b", { textContent: "AI Folders" })), this.el("div", { className: "row" }, search), this.el("div", { className: "row" }, tf, pf), this.el("div", { className: "row" }, newRoot, addCur), this.el("div", { className: "row" }, exp, imp, tagsBtn, file), this.tree, footer, this.layer);
+    const hb = (t, title, fn) => { const b = this.el("button", { className: "mini hbtn", textContent: t, title }); b.onclick = fn; return b; };
+    const head = this.el("div", { className: "head" }, this.el("b", { textContent: "AI Folders" }),
+      hb("⊟", "Collapse all folders", () => this.collapseAll()),
+      hb("⊞", "Expand all folders", () => this.expandAll()),
+      hb("⚙", "Settings (font)", () => this.openSettings()));
+    this.panel.replaceChildren(head, this.el("div", { className: "row" }, search), this.el("div", { className: "row" }, tf, pf), this.el("div", { className: "row" }, newRoot, addCur), this.el("div", { className: "row" }, exp, imp, tagsBtn, file), this.tree, footer, this.layer, ...this.handles);
     this.renderTree();
     this.restoreFocus(snap);
   }
@@ -548,9 +645,26 @@ GF.Sidebar.infoFromDataTransfer = (dt, adapter) => {
   return null;
 };
 
+/* Local font stacks only (no remote fonts). */
+GF.Sidebar.FONTS = {
+  system: { label: "System", stack: 'system-ui,-apple-system,"Segoe UI",Roboto,sans-serif' },
+  sans: { label: "Sans", stack: '"Helvetica Neue",Arial,"Liberation Sans","DejaVu Sans",sans-serif' },
+  humanist: { label: "Humanist", stack: '"Segoe UI","Noto Sans",Ubuntu,Cantarell,"Open Sans",sans-serif' },
+  rounded: { label: "Rounded", stack: 'ui-rounded,"SF Pro Rounded","Nunito","Varela Round",system-ui,sans-serif' },
+  serif: { label: "Serif", stack: 'Georgia,Cambria,"Times New Roman","DejaVu Serif",serif' },
+  mono: { label: "Mono", stack: 'ui-monospace,"SFMono-Regular",Menlo,Consolas,"DejaVu Sans Mono",monospace' }
+};
+
 GF.Sidebar.CSS = `
 :host{all:initial}
-*{box-sizing:border-box;font:13px/1.4 system-ui,sans-serif}
+:host{--gf-fs:13px;--gf-ff:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+*{box-sizing:border-box;font-family:var(--gf-ff);font-size:var(--gf-fs);line-height:1.4}
+.head{display:flex;align-items:center;gap:2px}.head b{flex:1;font-size:calc(var(--gf-fs)*1.05)}
+.hbtn{font-size:calc(var(--gf-fs)*1.1)}
+.rz{position:absolute;z-index:3}.rz-r{top:8px;right:-3px;bottom:12px;width:7px;cursor:ew-resize}
+.rz-b{left:8px;right:12px;bottom:-3px;height:7px;cursor:ns-resize}
+.rz-br{right:-2px;bottom:-2px;width:14px;height:14px;cursor:nwse-resize;background:linear-gradient(135deg,transparent 55%,#666 55%,#666 62%,transparent 62%,transparent 75%,#666 75%,#666 82%,transparent 82%)}
+input[type=range]{flex:1}
 .toggle{position:fixed;touch-action:none;user-select:none;width:${GF_POS.size}px;height:${GF_POS.size}px;border-radius:50%;border:1px solid #444;background:#1e1e1e;color:#fff;cursor:grab}
 .toggle.dragging{cursor:grabbing;opacity:.8}
 .panel{position:fixed;display:none;flex-direction:column;gap:6px;padding:10px;background:#1b1b1b;color:#eee;border:1px solid #333;border-radius:10px;box-shadow:0 8px 24px #0008}
@@ -563,10 +677,10 @@ button{background:#2b2b2b;color:#eee;border:1px solid #444;border-radius:6px;pad
 .folder:hover{background:#262626}.folder.sel{background:#22334f}
 .over{outline:2px dashed #4a7cff;background:#1d2a44}
 .drop-before{box-shadow:inset 0 2px 0 #4a7cff}.drop-after{box-shadow:inset 0 -2px 0 #4a7cff}
-.rootzone{color:#888;font-size:11px;padding:3px 6px;border:1px dashed #333;border-radius:5px;margin-bottom:4px}
+.rootzone{color:#888;font-size:calc(var(--gf-fs)*.85);padding:3px 6px;border:1px dashed #333;border-radius:5px;margin-bottom:4px}
 .name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .caret{width:12px;color:#999}
-.mini{padding:0 4px;font-size:11px;border:none;background:transparent;opacity:.6}.mini:hover{opacity:1}
+.mini{padding:0 4px;font-size:calc(var(--gf-fs)*.85);border:none;background:transparent;opacity:.6}.mini:hover{opacity:1}
 .conv{display:flex;justify-content:space-between;align-items:center;color:#bcd;text-decoration:none;padding:2px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .conv:hover{background:#262626}
 .dlg{position:absolute;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;border-radius:10px;padding:10px}
@@ -576,17 +690,17 @@ button{background:#2b2b2b;color:#eee;border:1px solid #444;border-radius:6px;pad
 .ficon{display:inline-block;width:14px;height:10px;margin:0 3px;border-radius:1px 3px 2px 2px;background:var(--fc,#8a8a8a);position:relative;flex:none;cursor:pointer}
 .ficon::before{content:"";position:absolute;left:0;top:-3px;width:6px;height:3px;border-radius:2px 2px 0 0;background:var(--fc,#8a8a8a)}
 .chips{display:inline-flex;gap:2px;flex:none;max-width:45%;overflow:hidden}
-.chip{font-size:10px;line-height:14px;padding:0 5px;border-radius:7px;color:#fff;cursor:pointer;white-space:nowrap;text-shadow:0 0 2px #0008}
+.chip{font-size:calc(var(--gf-fs)*.77);line-height:1.4;padding:0 5px;border-radius:7px;color:#fff;cursor:pointer;white-space:nowrap;text-shadow:0 0 2px #0008}
 .chip.on{outline:1px solid #fff}
 .sw{display:inline-block;border-radius:50%;flex:none}.sw.none{border:1px dashed #888}
 .swgrid{display:grid;grid-template-columns:repeat(6,auto);gap:4px}
 .swbtn{padding:3px;line-height:0}.swbtn.cur{outline:2px solid #4a7cff}
 .taglist{display:flex;flex-direction:column;gap:3px;max-height:200px;overflow:auto}
 .tagrow{display:flex;align-items:center;gap:6px}.tagrow input:not([type]){flex:1;padding:2px 6px}
-.cnt{color:#888;font-size:11px;min-width:16px;text-align:right}
+.cnt{color:#888;font-size:calc(var(--gf-fs)*.85);min-width:16px;text-align:right}
 select.tagsel{flex:1;min-width:0;background:#111;color:#eee;border:1px solid #444;border-radius:6px}
 .conv .name{flex:1;overflow:hidden;text-overflow:ellipsis}
 .ghost{position:fixed;pointer-events:none;z-index:2;background:#22334f;color:#fff;border:1px solid #4a7cff;border-radius:6px;padding:2px 8px;font-size:12px;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.badge{flex:none;font-size:9px;line-height:13px;padding:0 3px;margin-right:4px;border-radius:3px;color:#fff;background:#666;font-weight:600}
-.empty,.footer{color:#888;font-size:11px;padding:4px}
+.badge{flex:none;font-size:calc(var(--gf-fs)*.7);line-height:1.45;padding:0 3px;margin-right:4px;border-radius:3px;color:#fff;background:#666;font-weight:600}
+.empty,.footer{color:#888;font-size:calc(var(--gf-fs)*.85);padding:4px}
 `;
