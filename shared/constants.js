@@ -41,14 +41,18 @@ GF.FONTS = {
 };
 GF.FONT_KEYS = Object.keys(GF.FONTS);
 /* Folder name style packed in one small int (0 = default, omitted from storage):
- * bits 0-2 font index (0 = default, 1..6 = GF.FONT_KEYS[i-1]), bit 3 bold, bit 4 italic. */
-GF.encodeStyle = ({ font = null, bold = false, italic = false } = {}) => {
-  const i = GF.FONT_KEYS.indexOf(font) + 1;
-  return (i > 0 ? i : 0) | (bold ? 8 : 0) | (italic ? 16 : 0);
+ * bits 0-2 font index (0 = default, 1..6 = GF.FONT_KEYS[i-1]), bit 3 bold, bit 4 italic,
+ * bits 5-8 font size code (0 = default, 1..15 = 10..24 px). */
+GF.FOLDER_FS_MIN = 10; GF.FOLDER_FS_MAX = 24;
+GF.cleanFontSize = (v) => (Number.isInteger(v) && v >= GF.FOLDER_FS_MIN && v <= GF.FOLDER_FS_MAX ? v : null);
+GF.encodeStyle = ({ font = null, bold = false, italic = false, fontSize = null } = {}) => {
+  const i = GF.FONT_KEYS.indexOf(font) + 1, fs = GF.cleanFontSize(fontSize);
+  return (i > 0 ? i : 0) | (bold === true ? 8 : 0) | (italic === true ? 16 : 0) | ((fs ? fs - GF.FOLDER_FS_MIN + 1 : 0) << 5);
 };
 GF.decodeStyle = (n) => {
-  n = Number.isInteger(n) && n > 0 && n < 32 ? n : 0;
-  const i = n & 7;
-  return { font: i >= 1 && i <= GF.FONT_KEYS.length ? GF.FONT_KEYS[i - 1] : null, bold: !!(n & 8), italic: !!(n & 16) };
+  n = Number.isInteger(n) && n > 0 && n < 512 ? n : 0;
+  const i = n & 7, s = (n >> 5) & 15;
+  return { font: i >= 1 && i <= GF.FONT_KEYS.length ? GF.FONT_KEYS[i - 1] : null, bold: !!(n & 8), italic: !!(n & 16),
+    fontSize: s ? s + GF.FOLDER_FS_MIN - 1 : null };
 };
 GF.cleanStyle = (n) => GF.encodeStyle(GF.decodeStyle(n));

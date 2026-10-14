@@ -547,16 +547,25 @@ GF.Sidebar = class {
         ...GF.FONT_KEYS.map(k => this.el("option", { value: k, textContent: GF.FONTS[k].label, selected: k === st.font })));
       const bold = this.el("input", { type: "checkbox", checked: st.bold });
       const italic = this.el("input", { type: "checkbox", checked: st.italic });
+      let size = st.fontSize; // null = default (global size)
+      const range = this.el("input", { type: "range", min: GF.FOLDER_FS_MIN, max: GF.FOLDER_FS_MAX, step: 1, value: size || this.prefs.fs, title: "Name size" });
+      const sizeLbl = this.el("span", { className: "cnt" });
+      const sizeDef = this.el("button", { className: "mini", textContent: "Default", title: "Use the panel's font size" });
       const preview = this.el("span", { className: "name", textContent: f.name });
-      const upd = () => GF.Sidebar.styleName(preview, { font: fam.value || null, bold: bold.checked, italic: italic.checked });
-      fam.onchange = bold.onchange = italic.onchange = upd; upd();
+      const cur = () => ({ font: fam.value || null, bold: bold.checked, italic: italic.checked, fontSize: size });
+      const upd = () => { sizeLbl.textContent = size ? size + "px" : "Default"; GF.Sidebar.styleName(preview, cur()); };
+      fam.onchange = bold.onchange = italic.onchange = upd;
+      range.oninput = () => { size = +range.value; upd(); };
+      sizeDef.onclick = () => { size = null; range.value = this.prefs.fs; upd(); };
+      upd();
       const ok = this.el("button", { textContent: "Apply" });
-      ok.onclick = () => close({ color, style: { font: fam.value || null, bold: bold.checked, italic: italic.checked } });
+      ok.onclick = () => close({ color, style: cur() });
       const cancel = this.el("button", { textContent: "Cancel" }); cancel.onclick = () => close(null);
       card.append(this.el("b", { textContent: "Folder look" }), this.el("div", { className: "swgrid" }, ...sws),
         this.el("div", { className: "row" }, this.el("span", { textContent: "Font" }), fam),
         this.el("div", { className: "row" }, this.el("label", { className: "tagrow" }, bold, this.el("b", { textContent: "B" })),
           this.el("label", { className: "tagrow" }, italic, this.el("i", { textContent: "I" }))),
+        this.el("div", { className: "row" }, this.el("span", { textContent: "Size" }), range, sizeLbl, sizeDef),
         this.el("div", { className: "row prev" }, preview),
         this.el("div", { className: "row" }, ok, cancel));
     });
@@ -682,6 +691,7 @@ GF.Sidebar.styleName = (el, st) => {
   el.style.fontFamily = st && st.font && GF.FONTS[st.font] ? GF.FONTS[st.font].stack : "";
   el.style.fontWeight = st && st.bold ? "700" : "";
   el.style.fontStyle = st && st.italic ? "italic" : "";
+  el.style.fontSize = st && st.fontSize ? st.fontSize + "px" : ""; // row grows (no fixed height)
   return el;
 }; // local font stacks only (shared/constants.js)
 

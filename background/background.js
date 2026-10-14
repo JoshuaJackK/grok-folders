@@ -83,9 +83,9 @@ const handlers = {
   [M.UNASSIGN_CONV]: async (st, { key }) => { delete st.convs[key]; },
   /* ---- colors & tags ---- */
   /* Folder name style (own row only): { id, font: key|null, bold, italic } */
-  [M.SET_STYLE]: async (st, { id, font = null, bold = false, italic = false }) => {
+  [M.SET_STYLE]: async (st, { id, font = null, bold = false, italic = false, fontSize = null }) => {
     const f = st.folders[id]; if (!f) throw new Error("folder not found");
-    f.style = GF.encodeStyle({ font, bold, italic });
+    f.style = GF.encodeStyle({ font, bold, italic, fontSize });
   },
   [M.SET_COLOR]: async (st, { id, color }) => { const f = st.folders[id]; if (!f) throw new Error("folder not found"); f.color = GF.colorIndex(color); },
   [M.CREATE_TAG]: async (st, { name, color = 0 }) => {
@@ -146,7 +146,7 @@ function validateImport(d) {
     if (!f || typeof f.id !== "string" || !f.id || typeof f.name !== "string") throw new Error("Invalid folder #" + i);
     if (ids.has(f.id)) throw new Error("Duplicate folder id " + f.id);
     ids.add(f.id);
-    return { id: f.id, name: f.name.slice(0, 100), parentId: typeof f.parentId === "string" ? f.parentId : null, order: Number.isFinite(f.order) ? f.order : i, color: GF.colorIndex(f.color), tags: tagList(f.tags), style: GF.encodeStyle({ font: GF.FONTS[f.font] ? f.font : null, bold: f.bold === true, italic: f.italic === true }) };
+    return { id: f.id, name: f.name.slice(0, 100), parentId: typeof f.parentId === "string" ? f.parentId : null, order: Number.isFinite(f.order) ? f.order : i, color: GF.colorIndex(f.color), tags: tagList(f.tags), style: GF.encodeStyle({ font: GF.FONTS[f.font] ? f.font : null, bold: f.bold === true, italic: f.italic === true, fontSize: GF.cleanFontSize(f.fontSize) }) };
   });
   for (const f of folders) if (f.parentId && !ids.has(f.parentId)) f.parentId = null; // orphan -> root
   for (const f of folders) { // break cycles
@@ -199,6 +199,10 @@ function importData(st, { tags, folders, conversations }, mode) {
       let changed = union(ex, mapTags(f.tags));
       if (!ex.color && f.color) { ex.color = f.color; changed = true; }
       if (!ex.style && f.style) { ex.style = f.style; changed = true; }
+      else if (f.style) { // per-field fill-in: size only if local has none
+        const loc = GF.decodeStyle(ex.style), imp = GF.decodeStyle(f.style);
+        if (!loc.fontSize && imp.fontSize) { ex.style = GF.encodeStyle({ ...loc, fontSize: imp.fontSize }); changed = true; }
+      }
       if (changed) res.updated++;
       continue;
     }

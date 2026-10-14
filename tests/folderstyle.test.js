@@ -24,9 +24,9 @@ async function background() {
   // codec
   assert.strictEqual(GF.encodeStyle({}), 0);
   assert.strictEqual(GF.encodeStyle({ font: "serif", bold: true }), 5 | 8);
-  assert.deepStrictEqual(J(GF.decodeStyle(5 | 8 | 16)), { font: "serif", bold: true, italic: true });
-  assert.deepStrictEqual(J(GF.decodeStyle(7)), { font: null, bold: false, italic: false }, "invalid font index -> default");
-  assert.deepStrictEqual(J(GF.decodeStyle(999)), { font: null, bold: false, italic: false });
+  assert.deepStrictEqual(J(GF.decodeStyle(5 | 8 | 16)), { font: "serif", bold: true, italic: true, fontSize: null });
+  assert.deepStrictEqual(J(GF.decodeStyle(7)), { font: null, bold: false, italic: false, fontSize: null }, "invalid font index -> default");
+  assert.deepStrictEqual(J(GF.decodeStyle(999)), { font: null, bold: false, italic: false, fontSize: null });
 
   // old data loads unchanged; style defaults to 0; no schema bump
   await ok("gf:getState");
@@ -55,7 +55,7 @@ async function background() {
   const exp = { app: "grok-folders", schema: 3, tags: [{ id: "t1", name: "Work", color: "#e5484d" }],
     folders: Object.values(S().folders).map(f => ({ id: f.id, name: f.name, parentId: f.parentId, order: f.order, color: GF.PALETTE[f.color] || null, tags: f.tags, ...GF.decodeStyle(f.style) })),
     conversations: Object.values(S().convs).map(c => ({ provider: c.provider, convId: c.convId, folderId: c.folderId, title: c.title, order: c.order, tags: c.tags })) };
-  assert.deepStrictEqual(J(exp.folders.find(f => f.id === "A")), { id: "A", name: "Alma", parentId: null, order: 0, color: "#ffc53d", tags: [], font: "serif", bold: false, italic: true });
+  assert.deepStrictEqual(J(exp.folders.find(f => f.id === "A")), { id: "A", name: "Alma", parentId: null, order: 0, color: "#ffc53d", tags: [], font: "serif", bold: false, italic: true, fontSize: null });
   for (let i = 0; i < 2; i++) {
     const r = await ok("gf:import", { data: exp, mode: "merge" });
     assert.strictEqual(r.updated, 0); assert.strictEqual(r.foldersAdded, 0);
@@ -68,9 +68,9 @@ async function background() {
     { id: "X3", name: "Brand new", parentId: null, font: "humanist", italic: true, bold: "yes" } ], conversations: [] };
   let r = await ok("gf:import", { data: other, mode: "merge" });
   assert.strictEqual(r.updated, 1); assert.strictEqual(r.foldersAdded, 1);
-  assert.deepStrictEqual(J(GF.decodeStyle(S().folders.A.style)), { font: "serif", bold: false, italic: true });
-  assert.deepStrictEqual(J(GF.decodeStyle(S().folders.B.style)), { font: "rounded", bold: false, italic: false });
-  assert.deepStrictEqual(J(GF.decodeStyle(S().folders.X3.style)), { font: "humanist", bold: false, italic: true }, "non-boolean bold ignored");
+  assert.deepStrictEqual(J(GF.decodeStyle(S().folders.A.style)), { font: "serif", bold: false, italic: true, fontSize: null });
+  assert.deepStrictEqual(J(GF.decodeStyle(S().folders.B.style)), { font: "rounded", bold: false, italic: false, fontSize: null });
+  assert.deepStrictEqual(J(GF.decodeStyle(S().folders.X3.style)), { font: "humanist", bold: false, italic: true, fontSize: null }, "non-boolean bold ignored");
   const after = JSON.stringify(S());
   r = await ok("gf:import", { data: other, mode: "merge" });
   assert.strictEqual(r.updated + r.foldersAdded, 0); assert.strictEqual(JSON.stringify(S()), after);
@@ -78,6 +78,39 @@ async function background() {
   r = await ok("gf:import", { data: { app: "grok-folders", schema: 1, folders: [{ id: "O", name: "Old", parentId: null }], conversations: [] }, mode: "merge" });
   assert.strictEqual(r.foldersAdded, 1); assert.strictEqual(S().folders.O.style, 0);
   console.log("PASS export/import: readable fields, merge only-if-none, idempotent, old exports");
+
+  // --- font size (0.5.2) ---
+  for (const v of [10, 17, 24]) assert.strictEqual(GF.decodeStyle(GF.encodeStyle({ fontSize: v })).fontSize, v);
+  for (const v of [9, 25, 12.5, "14", null]) assert.strictEqual(GF.encodeStyle({ fontSize: v }), 0, "invalid size -> default " + v);
+  assert.deepStrictEqual(J(GF.decodeStyle(GF.encodeStyle({ font: "mono", bold: true, italic: true, fontSize: 24 }))), { font: "mono", bold: true, italic: true, fontSize: 24 });
+  assert.ok(GF.encodeStyle({ font: "mono", bold: true, italic: true, fontSize: 24 }) < 512);
+  await ok("gf:setStyle", { id: "C", fontSize: 18 });
+  assert.deepStrictEqual(sync._d.f0.C, ["Tagged", null, 1, 0, ["t1"], 0, 18], "size stored as separate trailing px value");
+  assert.strictEqual(GF.decodeStyle(S().folders.C.style).fontSize, 18);
+  // 0.5.1 reader compatibility: it accepts t[5] only if < 32 and ignores t[6] -> font/bold/italic intact.
+  await ok("gf:setStyle", { id: "C", font: "serif", bold: true, fontSize: 18 });
+  assert.deepStrictEqual(sync._d.f0.C, ["Tagged", null, 1, 0, ["t1"], 5 | 8, 18]);
+  assert.ok(sync._d.f0.C[5] < 32, "t[5] stays in 0.5.1's accepted range");
+  await ok("gf:setStyle", { id: "C", fontSize: 18 });
+  // export/import with fontSize
+  const exp2 = { app: "grok-folders", schema: 3, folders: Object.values(S().folders).map(f => ({ id: f.id, name: f.name, parentId: f.parentId, ...GF.decodeStyle(f.style) })), conversations: [] };
+  assert.strictEqual(exp2.folders.find(f => f.id === "C").fontSize, 18, "readable fontSize in export");
+  const snap = JSON.stringify(S());
+  r = await ok("gf:import", { data: exp2, mode: "merge" });
+  assert.strictEqual(r.updated, 0); assert.strictEqual(JSON.stringify(S()), snap, "idempotent with sizes");
+  const other2 = { app: "grok-folders", schema: 3, folders: [
+    { id: "Y1", name: "Alma", parentId: null, fontSize: 20 },        // A has font/italic but no size -> size added
+    { id: "Y2", name: "Tagged", parentId: null, fontSize: 11 },      // C already has size 18 -> kept
+    { id: "Y3", name: "Sized new", parentId: null, fontSize: 99 } ], conversations: [] };
+  r = await ok("gf:import", { data: other2, mode: "merge" });
+  assert.deepStrictEqual(J(GF.decodeStyle(S().folders.A.style)), { font: "serif", bold: false, italic: true, fontSize: 20 });
+  assert.strictEqual(GF.decodeStyle(S().folders.C.style).fontSize, 18);
+  assert.strictEqual(S().folders.Y3.style, 0, "invalid size ignored");
+  assert.strictEqual(r.updated, 1);
+  const snap2 = JSON.stringify(S());
+  r = await ok("gf:import", { data: other2, mode: "merge" });
+  assert.strictEqual(r.updated + r.foldersAdded, 0); assert.strictEqual(JSON.stringify(S()), snap2);
+  console.log("PASS font size: codec, compact storage, export/import merge only-if-none, idempotent");
 }
 
 async function ui() {
@@ -86,7 +119,8 @@ async function ui() {
   const state = { tags: {}, folders: {
     A: { id: "A", name: "Parent", parentId: null, order: 0, color: 0, tags: [], style: 5 | 8 },   // serif bold
     B: { id: "B", name: "Child", parentId: "A", order: 0, color: 0, tags: [], style: 0 },
-    C: { id: "C", name: "Mono kid", parentId: "A", order: 1, color: 0, tags: [], style: 6 | 16 } }, // mono italic
+    C: { id: "C", name: "Mono kid", parentId: "A", order: 1, color: 0, tags: [], style: 6 | 16 },  // mono italic
+    D: { id: "D", name: "Big", parentId: "A", order: 2, color: 0, tags: [], style: (22 - 9) << 5 } }, // 22px
     convs: { "grok:c1": { key: "grok:c1", provider: "grok", convId: "c1", folderId: "A", title: "Conv", order: 0, tags: [] } } };
   const dom = new JSDOM("<body></body>", { url: "https://grok.com/", runScripts: "outside-only", pretendToBeVisual: true });
   const w = dom.window, sent = [];
@@ -108,7 +142,11 @@ async function ui() {
   assert.strictEqual(name("Parent").closest(".folder").style.fontFamily, "");
   assert.strictEqual(name("Parent").closest(".folder").parentElement.getAttribute("style"), null, "subtree wrapper unstyled");
   assert.match(name("Mono kid").style.fontFamily, /monospace/); assert.strictEqual(name("Mono kid").style.fontStyle, "italic");
-  console.log("PASS rendering: own row only, no inheritance");
+  assert.strictEqual(name("Big").style.fontSize, "22px");
+  assert.strictEqual(name("Big").closest(".folder").style.height, "", "row has no fixed height (grows with text)");
+  assert.strictEqual(name("Child").style.fontSize, "", "size not inherited");
+  assert.strictEqual(conv.style.fontSize, "");
+  console.log("PASS rendering: own row only, no inheritance (font, bold, italic, size)");
 
   // picker: same popup as color; apply color + font
   name("Child").closest(".folder").querySelector(".ficon").click(); await tick();
@@ -121,11 +159,27 @@ async function ui() {
   assert.strictEqual(dlg.querySelector(".prev .name").style.fontWeight, "700", "live preview");
   [...dlg.querySelectorAll("button")].find(b => b.textContent === "Apply").click(); await tick(5);
   const calls = sent.filter(m => m.type === "gf:setColor" || m.type === "gf:setStyle").map(m => [m.type, m.payload]);
-  assert.deepStrictEqual(calls, [["gf:setColor", { id: "B", color: 2 }], ["gf:setStyle", { id: "B", font: "rounded", bold: true, italic: false }]]);
+  assert.deepStrictEqual(calls, [["gf:setColor", { id: "B", color: 2 }], ["gf:setStyle", { id: "B", font: "rounded", bold: true, italic: false, fontSize: null }]]);
+  // size slider + Default button with live preview
+  name("Mono kid").closest(".folder").querySelector(".ficon").click(); await tick();
+  const d2 = root.querySelector(".dlg"), rng = d2.querySelector('input[type=range]');
+  assert.strictEqual(+rng.min, 10); assert.strictEqual(+rng.max, 24);
+  assert.ok(d2.textContent.includes("Default"));
+  rng.value = "20"; rng.dispatchEvent(new w.Event("input"));
+  assert.strictEqual(d2.querySelector(".prev .name").style.fontSize, "20px", "live preview size");
+  [...d2.querySelectorAll("button")].find(b => b.textContent === "Apply").click(); await tick(5);
+  assert.deepStrictEqual(sent.filter(m => m.type === "gf:setStyle").at(-1).payload, { id: "C", font: "mono", bold: false, italic: true, fontSize: 20 });
+  name("Mono kid").closest(".folder").querySelector(".ficon").click(); await tick();
+  const d3 = root.querySelector(".dlg");
+  const r3 = d3.querySelector('input[type=range]'); r3.value = "15"; r3.dispatchEvent(new w.Event("input"));
+  [...d3.querySelectorAll("button")].find(b => b.textContent === "Default").click();
+  assert.strictEqual(d3.querySelector(".prev .name").style.fontSize, "");
+  [...d3.querySelectorAll("button")].find(b => b.textContent === "Cancel").click(); await tick();
+  const nSent = sent.length;
   // Cancel / unchanged -> no calls
   name("Parent").closest(".folder").querySelector(".ficon").click(); await tick();
   [...root.querySelectorAll(".dlg button")].find(b => b.textContent === "Apply").click(); await tick(5);
-  assert.strictEqual(sent.filter(m => m.type === "gf:setColor" || m.type === "gf:setStyle").length, 2, "no write when unchanged");
+  assert.strictEqual(sent.length, nSent, "no write when unchanged");
   console.log("PASS picker: color + font + bold/italic in one popup, no-op when unchanged");
   w.close();
 }
