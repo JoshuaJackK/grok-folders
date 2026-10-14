@@ -7,7 +7,8 @@
  *   "f0".."fN" -> { <folderId>: [name, parentId|null, order] }      (flat map)
  *   "c0".."cN" -> { "<provider>:<convId>": [folderId, title, order, tagIds?] } (v1 had no order)
  *   "t0".."tN" -> { <tagId>: [name, colorIdx] }                       (v3)
- * Folder tuple (v3): [name, parentId, order, colorIdx?, tagIds?]; trailing defaults
+ * Folder tuple (v3): [name, parentId, order, colorIdx?, tagIds?, style?] (style = name font/bold/italic,
+ * optional trailing field: older versions simply ignore it, so no schema bump); trailing defaults
  * (color 0, no tags) are omitted to save bytes. Colors are palette indexes (GF.PALETTE).
  * Short keys + array tuples keep the payload small. Chunks are filled greedily
  * up to CHUNK_BYTES. Stale chunks beyond the new count are removed.
@@ -45,7 +46,7 @@ GF.Storage = (() => {
 
   function encode(state) {
     const f = {}, c = {}, t = {};
-    for (const [id, x] of Object.entries(state.folders)) f[id] = trim([x.name, x.parentId, x.order, x.color || 0, x.tags || []], 3);
+    for (const [id, x] of Object.entries(state.folders)) f[id] = trim([x.name, x.parentId, x.order, x.color || 0, x.tags || [], x.style || 0], 3);
     for (const [k, x] of Object.entries(state.convs)) c[k] = trim([x.folderId, x.title || "", x.order || 0, x.tags || []], 3);
     for (const [id, x] of Object.entries(state.tags || {})) t[id] = [x.name, x.color || 0];
     const fi = chunk("f", f), ci = chunk("c", c), ti = chunk("t", t);
@@ -60,7 +61,7 @@ GF.Storage = (() => {
       st.tags[id] = { id, name: t[0], color: t[1] || 0 };
     const tagList = (a) => Array.isArray(a) ? a.filter(id => st.tags[id]) : [];
     for (let i = 0; i < meta.fc; i++) for (const [id, t] of Object.entries(all["f" + i] || {}))
-      st.folders[id] = { id, name: t[0], parentId: t[1], order: t[2] || 0, color: t[3] || 0, tags: tagList(t[4]) };
+      st.folders[id] = { id, name: t[0], parentId: t[1], order: t[2] || 0, color: t[3] || 0, tags: tagList(t[4]), style: GF.cleanStyle(t[5]) };
     for (let i = 0; i < meta.cc; i++) for (const [k, t] of Object.entries(all["c" + i] || {})) {
       const [provider, ...rest] = k.split(":");
       st.convs[k] = { key: k, provider, convId: rest.join(":"), folderId: t[0], title: t[1], order: Number.isFinite(t[2]) ? t[2] : 0, tags: tagList(t[3]) };

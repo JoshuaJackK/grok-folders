@@ -47,7 +47,7 @@ const handlers = {
   [M.CREATE_FOLDER]: async (st, { name, parentId = null }) => {
     if (parentId && !st.folders[parentId]) throw new Error("parent not found");
     const order = Object.values(st.folders).filter(f => f.parentId === parentId).length;
-    const id = uid(); st.folders[id] = { id, name: String(name).slice(0, 100), parentId, order, color: 0, tags: [] };
+    const id = uid(); st.folders[id] = { id, name: String(name).slice(0, 100), parentId, order, color: 0, tags: [], style: 0 };
     return id;
   },
   [M.RENAME_FOLDER]: async (st, { id, name }) => { st.folders[id].name = String(name).slice(0, 100); },
@@ -82,6 +82,11 @@ const handlers = {
   },
   [M.UNASSIGN_CONV]: async (st, { key }) => { delete st.convs[key]; },
   /* ---- colors & tags ---- */
+  /* Folder name style (own row only): { id, font: key|null, bold, italic } */
+  [M.SET_STYLE]: async (st, { id, font = null, bold = false, italic = false }) => {
+    const f = st.folders[id]; if (!f) throw new Error("folder not found");
+    f.style = GF.encodeStyle({ font, bold, italic });
+  },
   [M.SET_COLOR]: async (st, { id, color }) => { const f = st.folders[id]; if (!f) throw new Error("folder not found"); f.color = GF.colorIndex(color); },
   [M.CREATE_TAG]: async (st, { name, color = 0 }) => {
     const n = cleanTagName(name);
@@ -141,7 +146,7 @@ function validateImport(d) {
     if (!f || typeof f.id !== "string" || !f.id || typeof f.name !== "string") throw new Error("Invalid folder #" + i);
     if (ids.has(f.id)) throw new Error("Duplicate folder id " + f.id);
     ids.add(f.id);
-    return { id: f.id, name: f.name.slice(0, 100), parentId: typeof f.parentId === "string" ? f.parentId : null, order: Number.isFinite(f.order) ? f.order : i, color: GF.colorIndex(f.color), tags: tagList(f.tags) };
+    return { id: f.id, name: f.name.slice(0, 100), parentId: typeof f.parentId === "string" ? f.parentId : null, order: Number.isFinite(f.order) ? f.order : i, color: GF.colorIndex(f.color), tags: tagList(f.tags), style: GF.encodeStyle({ font: GF.FONTS[f.font] ? f.font : null, bold: f.bold === true, italic: f.italic === true }) };
   });
   for (const f of folders) if (f.parentId && !ids.has(f.parentId)) f.parentId = null; // orphan -> root
   for (const f of folders) { // break cycles
@@ -193,11 +198,12 @@ function importData(st, { tags, folders, conversations }, mode) {
       remap[f.id] = ex.id; res.foldersSkipped++;
       let changed = union(ex, mapTags(f.tags));
       if (!ex.color && f.color) { ex.color = f.color; changed = true; }
+      if (!ex.style && f.style) { ex.style = f.style; changed = true; }
       if (changed) res.updated++;
       continue;
     }
     const order = Object.values(st.folders).filter(x => x.parentId === parentId).length;
-    st.folders[f.id] = { id: f.id, name: f.name, parentId, order, color: f.color, tags: mapTags(f.tags) };
+    st.folders[f.id] = { id: f.id, name: f.name, parentId, order, color: f.color, tags: mapTags(f.tags), style: f.style };
     remap[f.id] = f.id; res.foldersAdded++;
   }
   for (const c of conversations) {

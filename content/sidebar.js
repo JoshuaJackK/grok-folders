@@ -352,7 +352,7 @@ GF.Sidebar = class {
     caret.onclick = (e) => { e.stopPropagation(); this.toggleCollapsed(f.id, !this.collapsed.has(f.id)); };
     const btn = (t, title, fn) => { const b = this.el("button", { className: "mini", textContent: t, title }); b.onclick = (e) => { e.stopPropagation(); fn(); }; return b; };
     const label = this.el("div", { className: "folder" + (this.selected === f.id ? " sel" : "") },
-      caret, this.folderIcon(f), this.el("span", { className: "name", textContent: f.name }), this.chips(f),
+      caret, this.folderIcon(f), GF.Sidebar.styleName(this.el("span", { className: "name", textContent: f.name }), GF.decodeStyle(f.style)), this.chips(f),
       btn("#", "Tags", () => this.editTags("folder", f.id, f.tags)),
       btn("+", "Subfolder", async () => { const n = prompt("Subfolder name"); if (n) await this.call(M.CREATE_FOLDER, { name: n, parentId: f.id }); }),
       btn("✎", "Rename", async () => { const n = prompt("Rename", f.name); if (n) await this.call(M.RENAME_FOLDER, { id: f.id, name: n }); }),
@@ -469,7 +469,7 @@ GF.Sidebar = class {
     const data = {
       app: "grok-folders", schema: GF.SCHEMA_VERSION, exportedAt: new Date().toISOString(),
       tags: Object.values(this.state.tags).map(({ id, name, color }) => ({ id, name, color: GF.PALETTE[color] || null })),
-      folders: Object.values(this.state.folders).map(({ id, name, parentId, order, color, tags }) => ({ id, name, parentId, order, color: GF.PALETTE[color] || null, tags: tags || [] })),
+      folders: Object.values(this.state.folders).map(({ id, name, parentId, order, color, tags, style }) => ({ id, name, parentId, order, color: GF.PALETTE[color] || null, tags: tags || [], ...GF.decodeStyle(style) })),
       conversations: Object.values(this.state.convs).map(({ provider, convId, folderId, title, order, tags }) => ({ provider, convId, folderId, title, order, tags: tags || [] }))
     };
     const d = new Date(), pad = (n) => String(n).padStart(2, "0");
@@ -521,14 +521,45 @@ GF.Sidebar = class {
     return s;
   }
   folderIcon(f) {
-    const i = this.el("span", { className: "ficon", title: "Folder color" });
+    const i = this.el("span", { className: "ficon", title: "Folder color & name font" });
     if (GF.PALETTE[f.color]) i.style.setProperty("--fc", GF.PALETTE[f.color]);
     i.onclick = async (e) => {
       e.stopPropagation();
-      const c = await this.pickColor(f.color, "Folder color");
-      if (c !== undefined) this.call(GF.MSG.SET_COLOR, { id: f.id, color: c });
+      const r = await this.pickFolderLook(f);
+      if (!r) return;
+      if (r.color !== (f.color || 0)) await this.call(GF.MSG.SET_COLOR, { id: f.id, color: r.color });
+      if (GF.encodeStyle(r.style) !== (f.style || 0)) await this.call(GF.MSG.SET_STYLE, { id: f.id, ...r.style });
     };
     return i;
+  }
+  /* Folder look: color + name font (own row only, not inherited) + bold/italic. Resolves {color, style} or null. */
+  pickFolderLook(f) {
+    let color = f.color || 0;
+    const st = GF.decodeStyle(f.style);
+    return this.modal((card, close) => {
+      const sws = GF.PALETTE.map((_, i) => {
+        const b = this.el("button", { className: "swbtn" + (i === color ? " cur" : ""), title: i ? GF.PALETTE[i] : "None" }, this.swatch(i, 16));
+        b.onclick = () => { color = i; sws.forEach((x, j) => x.classList.toggle("cur", j === i)); };
+        return b;
+      });
+      const fam = this.el("select", { className: "tagsel", title: "Name font" },
+        this.el("option", { value: "", textContent: "Default" }),
+        ...GF.FONT_KEYS.map(k => this.el("option", { value: k, textContent: GF.FONTS[k].label, selected: k === st.font })));
+      const bold = this.el("input", { type: "checkbox", checked: st.bold });
+      const italic = this.el("input", { type: "checkbox", checked: st.italic });
+      const preview = this.el("span", { className: "name", textContent: f.name });
+      const upd = () => GF.Sidebar.styleName(preview, { font: fam.value || null, bold: bold.checked, italic: italic.checked });
+      fam.onchange = bold.onchange = italic.onchange = upd; upd();
+      const ok = this.el("button", { textContent: "Apply" });
+      ok.onclick = () => close({ color, style: { font: fam.value || null, bold: bold.checked, italic: italic.checked } });
+      const cancel = this.el("button", { textContent: "Cancel" }); cancel.onclick = () => close(null);
+      card.append(this.el("b", { textContent: "Folder look" }), this.el("div", { className: "swgrid" }, ...sws),
+        this.el("div", { className: "row" }, this.el("span", { textContent: "Font" }), fam),
+        this.el("div", { className: "row" }, this.el("label", { className: "tagrow" }, bold, this.el("b", { textContent: "B" })),
+          this.el("label", { className: "tagrow" }, italic, this.el("i", { textContent: "I" }))),
+        this.el("div", { className: "row prev" }, preview),
+        this.el("div", { className: "row" }, ok, cancel));
+    });
   }
   pickColor(current, title = "Color") {
     return this.modal((card, close) => {
@@ -645,15 +676,14 @@ GF.Sidebar.infoFromDataTransfer = (dt, adapter) => {
   return null;
 };
 
-/* Local font stacks only (no remote fonts). */
-GF.Sidebar.FONTS = {
-  system: { label: "System", stack: 'system-ui,-apple-system,"Segoe UI",Roboto,sans-serif' },
-  sans: { label: "Sans", stack: '"Helvetica Neue",Arial,"Liberation Sans","DejaVu Sans",sans-serif' },
-  humanist: { label: "Humanist", stack: '"Segoe UI","Noto Sans",Ubuntu,Cantarell,"Open Sans",sans-serif' },
-  rounded: { label: "Rounded", stack: 'ui-rounded,"SF Pro Rounded","Nunito","Varela Round",system-ui,sans-serif' },
-  serif: { label: "Serif", stack: 'Georgia,Cambria,"Times New Roman","DejaVu Serif",serif' },
-  mono: { label: "Mono", stack: 'ui-monospace,"SFMono-Regular",Menlo,Consolas,"DejaVu Sans Mono",monospace' }
-};
+GF.Sidebar.FONTS = GF.FONTS;
+/* Apply a folder's own name style to ONE element (no inheritance to children). */
+GF.Sidebar.styleName = (el, st) => {
+  el.style.fontFamily = st && st.font && GF.FONTS[st.font] ? GF.FONTS[st.font].stack : "";
+  el.style.fontWeight = st && st.bold ? "700" : "";
+  el.style.fontStyle = st && st.italic ? "italic" : "";
+  return el;
+}; // local font stacks only (shared/constants.js)
 
 GF.Sidebar.CSS = `
 :host{all:initial}
