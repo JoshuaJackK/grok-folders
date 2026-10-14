@@ -9,7 +9,7 @@ Razširitev je podpisana na AMO kot **unlisted** (ni javno na addons.mozilla.org
 - Repozitorij mora ostati **javen**, sicer Firefox posodobitve ne more prebrati.
 
 ## Nova verzija
-Predpogoji: `gh` prijavljen, `npm i -g web-ext`, `python3`, spremenljivki `AMO_JWT_ISSUER` in `AMO_JWT_SECRET` (AMO API ključi – nikoli jih ne commitaj).
+Predpogoji: (za UI teste neobvezno `npm i jsdom` ali `NODE_PATH` do njega – sicer se `tests/ui.test.js` preskoči), `gh` prijavljen, `npm i -g web-ext`, `python3`, spremenljivki `AMO_JWT_ISSUER` in `AMO_JWT_SECRET` (AMO API ključi – nikoli jih ne commitaj).
 
 ```bash
 # vse spremembe commitane, nato:

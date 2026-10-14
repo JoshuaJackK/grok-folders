@@ -6,6 +6,7 @@
  *   currentConversation(): {convId, title} | null
  *   parseConvLink(anchorEl): {convId, title} | null
  *   conversationUrl(convId): string
+ *   navigate(convId): void          in-app (SPA) navigation when possible
  *   conversationLinkSelector: CSS selector for draggable conversation links
  */
 var GF = globalThis.GF;

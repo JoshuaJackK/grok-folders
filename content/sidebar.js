@@ -8,9 +8,10 @@ const GF_POS = {
   panelWidth: 300,
   panelMinHeight: 260,        // prefer opening below if at least this much room
   margin: 4,                  // min distance from viewport edges
-  dragThreshold: 4,
-  autoExpandMs: 600,          // hover time before a collapsed folder opens during drag           // px of movement before a press becomes a drag
-  storageKey: "uiPos"         // storage.local key (per-device UI pref)
+  dragThreshold: 4,           // px of movement before a press becomes a drag
+  autoExpandMs: 600,          // hover time before a collapsed folder opens during drag
+  storageKey: "uiPos",        // storage.local key: button position (per-device)
+  uiStateKey: "uiState"       // storage.local key: { open, collapsed[] } (survives navigation + reloads)
 };
 GF.Sidebar = class {
   constructor(adapter, api) {
@@ -23,7 +24,15 @@ GF.Sidebar = class {
     host.id = "grok-folders-host";
     host.style.cssText = "position:fixed;top:0;left:0;z-index:2147483646;";
     document.documentElement.appendChild(host);
+    this.host = host;
     this.root = host.attachShadow({ mode: "closed" });
+    // Keep keystrokes inside the panel: from outside, events are retargeted to the host <div>, so
+    // page-level "type anywhere to focus the composer" handlers would otherwise steal focus.
+    for (const t of ["keydown", "keyup", "keypress", "beforeinput", "input", "paste", "cut", "copy", "compositionstart", "compositionupdate", "compositionend"])
+      host.addEventListener(t, (e) => e.stopPropagation());
+    this.root.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && this.panel.classList.contains("open") && !this.layer.childElementCount) this.setOpen(false);
+    });
     const style = document.createElement("style");
     style.textContent = GF.Sidebar.CSS;
     this.root.appendChild(style);
@@ -32,7 +41,51 @@ GF.Sidebar = class {
     this.root.append(this.toggle, this.panel);
     this.pos = { left: GF_POS.left, top: GF_POS.top };
     this.initDrag();
+    this.restoreUiState();
   }
+
+  /* ---- Persistent UI state (panel open + collapsed folders) ---- */
+  async restoreUiState() {
+    try {
+      const r = await browser.storage.local.get(GF_POS.uiStateKey);
+      const u = r && r[GF_POS.uiStateKey];
+      if (u) {
+        if (Array.isArray(u.collapsed)) this.collapsed = new Set(u.collapsed);
+        if (u.open) this.setOpen(true, false);
+        if (this.tree) this.renderTree();
+      }
+    } catch (_) { /* ignore */ }
+  }
+  saveUiState() {
+    browser.storage.local.set({ [GF_POS.uiStateKey]: { open: this.panel.classList.contains("open"), collapsed: [...this.collapsed] } }).catch(() => {});
+  }
+  setOpen(open, save = true) {
+    this.panel.classList.toggle("open", open);
+    if (open) this.placePanel();
+    if (save) this.saveUiState();
+  }
+  toggleCollapsed(id, collapsed) {
+    collapsed ? this.collapsed.add(id) : this.collapsed.delete(id);
+    this.saveUiState(); this.renderTree();
+  }
+  /* Re-attach the host if the page re-renders and drops it. */
+  ensureMounted() { if (!this.host.isConnected) (document.documentElement || document).appendChild(this.host); }
+
+  /* ---- Focus preservation across re-renders (inputs carry data-fk keys) ---- */
+  snapFocus() {
+    const a = this.root.activeElement;
+    if (!a || !a.dataset || !a.dataset.fk) return null;
+    return { fk: a.dataset.fk, value: a.value, ss: a.selectionStart, se: a.selectionEnd };
+  }
+  restoreFocus(snap) {
+    if (!snap) return;
+    const el = this.root.querySelector(`[data-fk="${snap.fk}"]`);
+    if (!el) return;
+    if (el.value !== snap.value) el.value = snap.value; // keep uncommitted typing
+    if (this.root.activeElement !== el) el.focus({ preventScroll: true });
+    try { el.setSelectionRange(snap.ss, snap.se); } catch (_) { /* not a text input */ }
+  }
+  preserving(fn) { const s = this.snapFocus(); fn(); this.restoreFocus(s); }
 
   /* ---- Draggable toggle button; position persisted per-device in storage.local ---- */
   initDrag() {
@@ -80,7 +133,7 @@ GF.Sidebar = class {
     if (this.panel.classList.contains("open")) this.placePanel();
   }
   savePos() { browser.storage.local.set({ [GF_POS.storageKey]: this.pos }).catch(() => {}); }
-  togglePanel() { this.panel.classList.toggle("open"); if (this.panel.classList.contains("open")) this.placePanel(); }
+  togglePanel() { this.setOpen(!this.panel.classList.contains("open")); }
   /* Open below the button (or above if no room); left-aligned (or right-aligned if near right edge). */
   placePanel() {
     const { left, top } = this.pos, s = GF_POS.size, g = GF_POS.panelGap, m = GF_POS.margin;
@@ -98,7 +151,7 @@ GF.Sidebar = class {
   setState(state, mode) {
     this.state = state || {}; for (const k of ["folders", "convs", "tags"]) this.state[k] = this.state[k] || {};
     if (this.tagFilter && !this.state.tags[this.tagFilter]) this.tagFilter = null;
-    this.mode = mode || this.mode; this.render(); if (this.live) this.live();
+    this.mode = mode || this.mode; this.render(); if (this.live) this.preserving(this.live);
   }
   async call(type, payload) { const r = await this.api(type, payload); if (!r.ok) alert("Grok Folders: " + r.error); return r; }
 
@@ -120,7 +173,9 @@ GF.Sidebar = class {
   }
   render() {
     const M = GF.MSG;
+    const snap = this.snapFocus();
     const search = this.el("input", { type: "search", placeholder: "Search titles / tags…", value: this.query });
+    search.dataset.fk = "search";
     const tf = this.el("select", { className: "tagsel", title: "Filter by tag" },
       this.el("option", { value: "", textContent: "All tags" }),
       ...Object.values(this.state.tags).sort((a, b) => a.name.localeCompare(b.name)).map(t => this.el("option", { value: t.id, textContent: "# " + t.name, selected: t.id === this.tagFilter })));
@@ -142,7 +197,7 @@ GF.Sidebar = class {
     const footer = this.el("div", { className: "footer", textContent: "storage: " + this.mode });
     this.panel.replaceChildren(this.el("div", { className: "head" }, this.el("b", { textContent: "Grok Folders" })), this.el("div", { className: "row" }, search, tf), this.el("div", { className: "row" }, newRoot, addCur), this.el("div", { className: "row" }, exp, imp, tagsBtn, file), this.tree, footer, this.layer);
     this.renderTree();
-    if (this.query) { search.focus(); search.setSelectionRange(search.value.length, search.value.length); }
+    this.restoreFocus(snap);
   }
 
   renderTree() {
@@ -190,7 +245,7 @@ GF.Sidebar = class {
     const M = GF.MSG;
     const open = !this.collapsed.has(f.id) || !!this.query || !!this.tagFilter;
     const caret = this.el("span", { className: "caret", textContent: open ? "▾" : "▸" });
-    caret.onclick = (e) => { e.stopPropagation(); this.collapsed.has(f.id) ? this.collapsed.delete(f.id) : this.collapsed.add(f.id); this.renderTree(); };
+    caret.onclick = (e) => { e.stopPropagation(); this.toggleCollapsed(f.id, !this.collapsed.has(f.id)); };
     const btn = (t, title, fn) => { const b = this.el("button", { className: "mini", textContent: t, title }); b.onclick = (e) => { e.stopPropagation(); fn(); }; return b; };
     const label = this.el("div", { className: "folder" + (this.selected === f.id ? " sel" : "") },
       caret, this.folderIcon(f), this.el("span", { className: "name", textContent: f.name }), this.chips(f),
@@ -211,7 +266,7 @@ GF.Sidebar = class {
         if (z !== "inside" || !this.collapsed.has(f.id)) { clearTimeout(this.expandTimer); this.expandFor = null; return; }
         if (this.expandFor === f.id) return;
         clearTimeout(this.expandTimer); this.expandFor = f.id;
-        this.expandTimer = setTimeout(() => { this.collapsed.delete(f.id); this.expandFor = null; this.renderTree(); }, GF_POS.autoExpandMs);
+        this.expandTimer = setTimeout(() => { this.expandFor = null; this.toggleCollapsed(f.id, false); }, GF_POS.autoExpandMs);
       });
     const wrap = this.el("div", {}, label);
     if (open) {
@@ -223,6 +278,12 @@ GF.Sidebar = class {
         tg.onclick = (e) => { e.preventDefault(); e.stopPropagation(); this.editTags("conv", c.key, c.tags); };
         a.append(tg);
         a.style.paddingLeft = (20 + depth * 12) + "px";
+        // Plain left click: navigate inside Grok's SPA (keeps panel + page state). Modified clicks behave natively.
+        a.addEventListener("click", (e) => {
+          if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+          e.preventDefault();
+          this.adapter.navigate(c.convId);
+        });
         const x = this.el("button", { className: "mini", textContent: "✕", title: "Remove from folder" });
         x.onclick = (e) => { e.preventDefault(); e.stopPropagation(); this.call(M.UNASSIGN_CONV, { key: c.key }); };
         a.append(x);
@@ -307,7 +368,7 @@ GF.Sidebar = class {
 
   /* ---- In-panel modals (rendered in this.layer so re-renders don't close them) ---- */
   modal(build) {
-    if (!this.panel.classList.contains("open")) this.togglePanel();
+    if (!this.panel.classList.contains("open")) this.setOpen(true);
     return new Promise((resolve) => {
       const card = this.el("div", { className: "dlg-card" });
       const box = this.el("div", { className: "dlg" }, card);
@@ -377,6 +438,7 @@ GF.Sidebar = class {
       }), ...(Object.keys(this.state.tags).length ? [] : [this.el("div", { className: "empty", textContent: "No tags yet" })]));
       draw();
       const inp = this.el("input", { placeholder: "New tag…" });
+      inp.dataset.fk = "tagpick-new";
       const add = this.el("button", { textContent: "Add" });
       add.onclick = async () => {
         const name = inp.value.trim(); if (!name) return;
@@ -401,10 +463,13 @@ GF.Sidebar = class {
       const draw = () => list.replaceChildren(...Object.values(this.state.tags).sort((a, b) => a.name.localeCompare(b.name)).map(t => {
         const sw = this.el("button", { className: "swbtn", title: "Color" }, this.swatch(t.color, 14));
         sw.onclick = async () => { const c = await this.pickColor(t.color, "Tag color"); if (c !== undefined) this.call(M.UPDATE_TAG, { id: t.id, color: c }); };
-        const name = this.el("input", { value: t.name, title: "Rename (Enter)" });
+        const name = this.el("input", { value: t.name, title: "Rename: type, then Enter (Esc reverts)" });
+        name.dataset.fk = "tag-rename-" + t.id;
         const commit = () => { if (name.value.trim() && name.value.trim() !== t.name) this.call(M.UPDATE_TAG, { id: t.id, name: name.value }); };
-        name.onkeydown = (e) => { if (e.key === "Enter") commit(); };
-        name.onblur = commit;
+        name.onkeydown = (e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") { e.stopPropagation(); name.value = t.name; }
+        };
         const n = usage(t.id);
         const del = this.el("button", { className: "mini", textContent: "🗑", title: "Delete tag" });
         del.onclick = async () => { if (await this.dialog(`Delete tag "${t.name}"? It is used on ${n} item(s).`, [["Delete", true], ["Cancel", false]])) this.call(M.DELETE_TAG, { id: t.id }); };
@@ -413,6 +478,7 @@ GF.Sidebar = class {
       draw();
       this.live = draw;
       const inp = this.el("input", { placeholder: "New tag…" });
+      inp.dataset.fk = "tag-new";
       const add = this.el("button", { textContent: "Add" });
       add.onclick = async () => { const v = inp.value.trim(); if (v && (await this.call(M.CREATE_TAG, { name: v, color: this.nextColor() })).ok) inp.value = ""; };
       inp.onkeydown = (e) => { if (e.key === "Enter") add.onclick(); };

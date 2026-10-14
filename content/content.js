@@ -14,6 +14,10 @@
     if (info) e.dataTransfer.setData("application/x-gf-conv", JSON.stringify(info));
   }, true);
 
+  // Re-mount if the page re-renders <html> children and drops our host.
+  new MutationObserver(() => sidebar.ensureMounted()).observe(document.documentElement, { childList: true });
+  setInterval(() => sidebar.ensureMounted(), 2000);
+
   browser.runtime.onMessage.addListener((msg) => {
     if (msg && msg.type === GF.MSG.STATE_CHANGED) sidebar.setState(msg.state, msg.mode);
   });

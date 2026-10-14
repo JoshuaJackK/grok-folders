@@ -27,5 +27,13 @@ GF.registerAdapter({
     const convId = this.idFromPath(new URL(a.href, location.origin).pathname);
     return convId ? { convId, title: a.textContent.trim() || convId } : null;
   },
+  /* SPA navigation: click Grok's own history link (handled by its router) if present; else full load. */
+  navigate(convId) {
+    const host = document.getElementById("grok-folders-host");
+    const link = [...document.querySelectorAll(this.selectors.convLink)]
+      .find(a => a !== host && this.idFromPath(new URL(a.href, location.origin).pathname) === convId);
+    if (link) link.click();
+    else location.assign(this.conversationUrl(convId));
+  },
   conversationUrl: (id) => "https://grok.com/c/" + encodeURIComponent(id)
 });

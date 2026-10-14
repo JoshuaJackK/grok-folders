@@ -20,7 +20,7 @@ open(p, "w").write(json.dumps(m, indent=2) + "\n")
 PY
 
 # 2) tests + lint
-for t in tests/*.test.js; do node "$t"; done
+for t in tests/*.test.js; do node "$t"; done   # ui.test.js needs jsdom (NODE_PATH or npm i jsdom), otherwise SKIPs
 web-ext lint --self-hosted --ignore-files "${IGNORE[@]}"
 
 # 3) sign (unlisted, self-distributed)
