@@ -22,7 +22,7 @@ const CASES = {
       ["/i/grok?conversation=5d1f0a2e-0b7c-4c1e-9a55-2f6f7a1b9c00", "UUID chat"], ["/home", "Home"], ["/i/grok", "New chat"]],
     paths: { "/i/grok?conversation=123456": "123456", "/i/grok/?conversation=123456&x=1": "123456",
       "/i/grok?conversation=124e3867-8ba5-476d-aa9a-0395edd41b65": "124e3867-8ba5-476d-aa9a-0395edd41b65",
-      "/i/grok?conversation=124E3867-8BA5-476D-AA9A-0395EDD41B65": "124E3867-8BA5-476D-AA9A-0395EDD41B65",
+      "/i/grok?conversation=124E3867-8BA5-476D-AA9A-0395EDD41B65": "124e3867-8ba5-476d-aa9a-0395edd41b65", // canonical lowercase
       "/i/grok": null, "/i/grok?conversation=": null, "/i/grok?conversation=abc": null, "/i/grok?conversation=abc%20def%3Cx": null, "/i/grok?conversation=ab_cd/ef": null,
       "/home?conversation=123456": null, "/i/grokx?conversation=123456": null, "/c/123456": null },
     urlFor: ["124e3867-8ba5-476d-aa9a-0395edd41b65", "https://x.com/i/grok?conversation=124e3867-8ba5-476d-aa9a-0395edd41b65"], rt: "987654321" }

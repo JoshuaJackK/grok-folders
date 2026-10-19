@@ -56,3 +56,53 @@ GF.decodeStyle = (n) => {
     fontSize: s ? s + GF.FOLDER_FS_MIN - 1 : null };
 };
 GF.cleanStyle = (n) => GF.encodeStyle(GF.decodeStyle(n));
+/* Conversation identity shared by grok.com and Grok inside X (0.5.5): both use the SAME UUID conversation ids
+ * (grok.com/c/<uuid> == x.com/i/grok?conversation=<uuid>), so a UUID chat is stored once as "grok:<uuid>",
+ * lowercase (grok.com's canonical form). Legacy numeric X ids stay "grokx:<id>". */
+GF.UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+GF.canonConv = (provider, convId) => {
+  const id = String(convId == null ? "" : convId);
+  if ((provider === "grok" || provider === "grokx") && GF.UUID_RE.test(id)) return { provider: "grok", convId: id.toLowerCase() };
+  return { provider, convId: id };
+};
+GF.canonKey = (key) => {
+  const i = String(key).indexOf(":"); if (i < 0) return key;
+  const c = GF.canonConv(key.slice(0, i), key.slice(i + 1)); return c.provider + ":" + c.convId;
+};
+/* Title quality for merges: 0 = empty / just the id, 1 = generic placeholder, 2 = real title. */
+GF.TITLE_PLACEHOLDER_RE = /^(new chat|new conversation|untitled|grok|x|twitter|chat history|history|novi klepet|nov pogovor)$/i;
+GF.titleScore = (t, convId) => {
+  const s = String(t || "").trim();
+  if (!s || s.toLowerCase() === String(convId || "").toLowerCase()) return 0;
+  return GF.TITLE_PLACEHOLDER_RE.test(s) ? 1 : 2;
+};
+/*
+ * Normalise conversation keys in a decoded state IN PLACE (idempotent). "grokx:<uuid>" (any case) and
+ * "grok:<UUID>" become "grok:<uuid>". Duplicates collapse into ONE entry: the one already under the
+ * canonical key wins (else the first by key); title = best score (tie: winner's), tags = union. A
+ * conversation lives in exactly one folder in this data model, so the winner's folder is kept.
+ * Returns the number of keys changed/merged (0 => nothing to save).
+ */
+GF.normalizeConvs = (st) => {
+  const groups = new Map();
+  for (const k of Object.keys(st.convs || {}).sort()) {
+    const ck = GF.canonKey(k);
+    if (!groups.has(ck)) groups.set(ck, []);
+    groups.get(ck)[k === ck ? "unshift" : "push"](k);
+  }
+  let changed = 0; const touched = new Set();
+  for (const [ck, keys] of groups) {
+    if (keys.length === 1 && keys[0] === ck) continue;
+    const entries = keys.map(k => st.convs[k]);
+    const win = entries[0], { provider, convId } = GF.canonConv(win.provider, win.convId);
+    let title = win.title || "";
+    for (const e of entries.slice(1)) if (GF.titleScore(e.title, convId) > GF.titleScore(title, convId)) title = e.title;
+    const tags = [...new Set(entries.flatMap(e => e.tags || []))];
+    for (const k of keys) { touched.add(st.convs[k].folderId); delete st.convs[k]; }
+    st.convs[ck] = { ...win, key: ck, provider, convId, title, tags };
+    changed += keys.length - (keys[0] === ck ? 1 : 0);
+  }
+  for (const fid of touched) // dense, stable order within affected folders
+    Object.values(st.convs).filter(c => c.folderId === fid).sort((a, b) => (a.order || 0) - (b.order || 0)).forEach((c, i) => { c.order = i; });
+  return changed;
+};

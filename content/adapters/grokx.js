@@ -1,5 +1,8 @@
 /*
- * Grok inside X (x.com/i/grok, twitter.com/i/grok). Own ID space ("grokx:<id>"), separate from grok.com.
+ * Grok inside X (x.com/i/grok, twitter.com/i/grok).
+ * IDS (0.5.5): UUID conversations are the SAME chats as grok.com/c/<uuid> (confirmed by the user), so they are
+ * stored as "grok:<lowercase uuid>" (one entry, Grok badge) and open inside X when clicked here. Legacy numeric
+ * X ids have no grok.com counterpart and stay "grokx:<id>".
  * VERIFIED (public sources: userscripts/exporters, user-shared links): conversation URL is
  *   https://x.com/i/grok?conversation=<id>   (id lives in the QUERY string, not the path).
  *   <id> is a numeric rest_id (older chats) or a UUID (seen on v0.5.3: 124e3867-8ba5-476d-aa9a-0395edd41b65).
@@ -18,9 +21,12 @@ GF.registerAdapter(GF.makeAdapter({
     const id = new URLSearchParams(u.search || "").get("conversation");
     // Ids seen in the wild: numeric snowflakes (1990017815781278167) AND UUIDs (124e3867-8ba5-…), so
     // accept any safe token. Stored as-is (case kept) under "grokx:<id>".
-    return id && /^[A-Za-z0-9-]{6,100}$/.test(id) ? id : null;
+    if (!id || !/^[A-Za-z0-9-]{6,100}$/.test(id)) return null;
+    return GF.UUID_RE.test(id) ? id.toLowerCase() : id;  // same canonical form as grok.com
   },
   urlFor: (id) => "https://x.com/i/grok?conversation=" + id,
+  providers: ["grokx", "grok"],                                  // grok: UUID chats open in-app on X too
+  providerFor: (id) => (GF.UUID_RE.test(id) ? "grok" : "grokx"),
   // GUESS: history drawer/panel ("Chat history" button inside /i/grok) renders items as links to
   // /i/grok?conversation=<id>. If X renders them as non-link [role=button] rows, page drag/titles from
   // the list won't work and navigation falls back to a full page load.

@@ -32,7 +32,7 @@ GF.PageDnD = class {
   }
   infoFor(a) {
     const i = this.adapter.parseConvLink(a);
-    return i && { provider: this.adapter.id, ...i };
+    return i && { provider: this.adapter.providerFor(i.convId), ...i };
   }
   start() {
     const opt = { capture: true };

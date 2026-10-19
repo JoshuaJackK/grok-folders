@@ -21,6 +21,7 @@ function placeAt(siblings, item, index) {
 }
 function placeConv(st, { provider, convId, title, folderId, targetKey, position }) {
   if (!st.folders[folderId]) throw new Error("folder not found");
+  ({ provider, convId } = GF.canonConv(provider, convId)); // e.g. an older tab still sending grokx:<uuid>
   const key = provider + ":" + convId;
   const prev = st.convs[key];
   const c = { key, provider, convId, folderId, title: String(title || (prev && prev.title) || "").slice(0, GF.TITLE_MAX), order: 0, tags: prev ? prev.tags || [] : [] };
@@ -118,7 +119,7 @@ const handlers = {
   [M.UPDATE_TITLES]: async (st, { provider, titles }) => {
     let changed = 0;
     for (const [convId, raw] of Object.entries(titles || {})) {
-      const c = st.convs[provider + ":" + convId];
+      const c = st.convs[GF.canonKey(provider + ":" + convId)];
       const t = String(raw || "").trim().slice(0, GF.TITLE_MAX);
       if (!c || !t || c.title === t) continue;
       c.title = t; changed++;
@@ -156,8 +157,17 @@ function validateImport(d) {
   const conversations = d.conversations.filter((c, i) => {
     if (!c || typeof c.convId !== "string" || !c.convId || typeof c.folderId !== "string") throw new Error("Invalid conversation #" + i);
     return ids.has(c.folderId);
-  }).map(c => ({ provider: typeof c.provider === "string" && c.provider ? c.provider : "grok", convId: c.convId, folderId: c.folderId, title: String(c.title || "").slice(0, GF.TITLE_MAX), order: Number.isFinite(c.order) ? c.order : Infinity, tags: tagList(c.tags) }));
-  return { tags, folders, conversations };
+  }).map(c => ({ ...GF.canonConv(typeof c.provider === "string" && c.provider ? c.provider : "grok", c.convId), folderId: c.folderId, title: String(c.title || "").slice(0, GF.TITLE_MAX), order: Number.isFinite(c.order) ? c.order : Infinity, tags: tagList(c.tags) }));
+  // Same key normalisation as storage: grokx:<uuid> and grok:<uuid> in one file collapse into one entry
+  // (first occurrence keeps its folder/order; best title; tags unioned).
+  const byKey = new Map();
+  for (const c of conversations) {
+    const k = c.provider + ":" + c.convId, prev = byKey.get(k);
+    if (!prev) { byKey.set(k, c); continue; }
+    if (GF.titleScore(c.title, c.convId) > GF.titleScore(prev.title, prev.convId)) prev.title = c.title;
+    prev.tags = [...new Set([...prev.tags, ...c.tags])];
+  }
+  return { tags, folders, conversations: [...byKey.values()] };
 }
 
 /*
@@ -212,7 +222,13 @@ function importData(st, { tags, folders, conversations }, mode) {
   }
   for (const c of conversations) {
     const key = c.provider + ":" + c.convId;
-    if (st.convs[key]) { res.conversationsSkipped++; if (union(st.convs[key], mapTags(c.tags))) res.updated++; continue; }
+    if (st.convs[key]) {
+      res.conversationsSkipped++;
+      const ex = st.convs[key]; let upd = union(ex, mapTags(c.tags));
+      if (GF.titleScore(c.title, c.convId) > GF.titleScore(ex.title, ex.convId)) { ex.title = c.title; upd = true; }
+      if (upd) res.updated++;
+      continue;
+    }
     const fid = remap[c.folderId];
     const order = Number.isFinite(c.order) ? c.order : sortedConvs(st, fid).length;
     st.convs[key] = { key, provider: c.provider, convId: c.convId, folderId: fid, title: c.title, order, tags: mapTags(c.tags) };

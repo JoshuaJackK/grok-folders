@@ -131,6 +131,14 @@ GF.Storage = (() => {
     cache = pick ? decode(migrate(pick.all)) : { folders: {}, convs: {}, tags: {} };
     lastTs = pick ? pick.all.meta.ts : 0;
     console.info("[GF] loaded from", pick ? pick.area : "(empty)", Object.keys(cache.folders).length, "folders");
+    // Key normalisation (0.5.5): grokx:<uuid> -> grok:<uuid> (merged). Idempotent: a normalised copy yields 0
+    // and is never rewritten. Saved once through save() (same chunking, stale-chunk cleanup, local mirror).
+    // A failed save keeps the normalised state in memory; the next mutation persists it.
+    const n = GF.normalizeConvs(cache);
+    if (n) {
+      console.info("[GF] normalised", n, "conversation key(s)");
+      try { await save(cache); } catch (e) { console.warn("[GF] could not save normalised keys:", e.message); }
+    }
     return cache;
   }
 

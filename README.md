@@ -7,7 +7,7 @@ Podprte strani (vsaka ima svoj adapter v `content/adapters/`):
 | Ponudnik | Gostitelj | URL pogovora | Značka |
 |---|---|---|---|
 | Grok | grok.com | `/c/<id>` | Gk |
-| Grok (X) | x.com, twitter.com | `/i/grok?conversation=<id>` (UUID ali številčni) | GX |
+| Grok (X) | x.com, twitter.com | `/i/grok?conversation=<id>`: UUID → shranjen kot **Grok** (`grok:<uuid>`), številčni (stari) → `grokx:<id>` | Gk / GX |
 | ChatGPT | chatgpt.com | `/c/<id>`, `/g/<gpt>/c/<id>` | GPT |
 | Claude | claude.ai | `/chat/<uuid>` | Cl |
 | Gemini | gemini.google.com | `/app/<id>`, `/u/<n>/app/<id>` | Gm |
@@ -16,6 +16,8 @@ Podprte strani (vsaka ima svoj adapter v `content/adapters/`):
 ⚠️ Vzorci URL so preverjeni po javnih virih; **selektorji, formati naslovov zavihkov in nadomestni naslovi so ugibanja** (označeno v vsakem adapterju). Klik na pogovor iste strani = navigacija znotraj aplikacije; pogovor drugega ponudnika se odpre v novem zavihku. Filter „All AIs“ omeji prikaz na enega ponudnika.
 
 **Grok v X** (`content/adapters/grokx.js`, ponudnik `grokx`): pogovori imajo **lasten prostor id‑jev** (`grokx:<id>`), ločen od grok.com. Id je v poizvedbi (`?conversation=`), ne v poti. Ker je X ena sama SPA, se skript naloži na celem x.com, a plošča 📁 se prikaže **samo na `/i/grok`** (preverjanje ob SPA navigaciji); drugje na X ni gumba, vlečenje in posodabljanje naslovov sta neaktivna in DOM X ostane nedotaknjen. Klik na shranjen pogovor uporabi Xovo povezavo v zgodovini (če obstaja), sicer naloži URL. ⚠️ Selektorji zgodovine (`a[href*="/i/grok?conversation="]`), naslova in format naslova zavihka („… / X“) so ugibanje. Gecko id ostaja `grok-folders@joshuajackk.github.io`.
+
+**Skupni id‑ji (0.5.5):** X in grok.com uporabljata iste UUID id‑je (`grok.com/c/<uuid>` = `x.com/i/grok?conversation=<uuid>`), zato je tak pogovor shranjen **enkrat** kot `grok:<uuid>` (male črke, kot na grok.com) z značko Gk. Klik nanj na X ga odpre znotraj X (prek Xove povezave v zgodovini, sicer prek URL‑ja X), na grok.com na grok.com, drugje v novem zavihku na grok.com. Ob nalaganju se obstoječi `grokx:<uuid>` samodejno pretvorijo v `grok:<uuid>`; če obstajata oba, se združita (en vnos, boljši naslov, unija oznak). Ker je pogovor v tem modelu vedno v **eni** mapi, ob združevanju iz različnih map ostane mapa vnosa `grok:`. Enako normalizacijo uporablja uvoz JSON. Številčni id‑ji X ostanejo `grokx:<id>` (GX).
 
 ## Funkcije (MVP)
 - Gumb 📁 lahko premakneš z miško (položaj se shrani lokalno v `storage.local` pod `uiPos`); dvoklik ga ponastavi.
@@ -95,6 +97,6 @@ Lint: `npx web-ext lint` · Zagon: `npx web-ext run`
 2. Ob prvem zagonu zahtevati host permission (`permissions.request`), če ni odobren.
 4. Sporočanje stanja in konflikti pri sync: merge po `ts` namesto „zadnji zapis zmaga“; preklop nazaj iz local v sync.
 5. Stran z nastavitvami.
-6. Testi: `node tests/import.test.js`, `node tests/move.test.js`, `node tests/tags.test.js`, `node tests/ui.test.js`, `node tests/titles.test.js`, `node tests/adapters.test.js`, `node tests/permissions.test.js`, `node tests/pagednd.test.js`, `node tests/prefs.test.js`, `node tests/folderstyle.test.js`, `node tests/grokx.test.js` (jsdom); dodati še `encode/decode/chunk`.
+6. Testi: `node tests/import.test.js`, `node tests/move.test.js`, `node tests/tags.test.js`, `node tests/ui.test.js`, `node tests/titles.test.js`, `node tests/adapters.test.js`, `node tests/permissions.test.js`, `node tests/pagednd.test.js`, `node tests/prefs.test.js`, `node tests/folderstyle.test.js`, `node tests/grokx.test.js`, `node tests/normalize.test.js` (jsdom); dodati še `encode/decode/chunk`.
 7. Adapterji za druge ponudnike (ChatGPT, Claude) prek istega vmesnika.
 8. Zamenjava `prompt/confirm` z lastnimi dialogi v shadow DOM; i18n (`_locales`).

@@ -5,6 +5,7 @@ GF.registerAdapter(GF.makeAdapter({
   hosts: ["grok.com"],
   pathRe: /^\/c\/([^/?#]+)/,
   urlFor: (id) => "https://grok.com/c/" + id,
+  normalizeId: (id) => (GF.UUID_RE.test(id) ? id.toLowerCase() : id), // UUIDs lowercase (shared with Grok on X)
   linkSelector: 'a[href*="/c/"]',                                     // GUESS: history links
   linkTitleSelector: "[data-testid='conversation-title'], .truncate, span", // GUESS
   tabTitleRe: /\s*[-|–]\s*Grok\s*$/i,                                   // GUESS: "<title> - Grok"

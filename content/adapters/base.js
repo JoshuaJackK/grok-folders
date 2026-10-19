@@ -5,6 +5,9 @@
  *   matches(location): bool
  *   idFromPath(pathname): convId | null
  *   idFromUrl(URL|Location): convId | null   (default: idFromPath(pathname); query-based ids override)
+ *   providerFor(convId): provider id the conversation is STORED under (default: adapter id; Grok on X
+ *                                   maps UUID chats to "grok" since grok.com shares those ids)
+ *   handles(provider): bool         true if this site can open that provider's chats in-app
  *   routeScoped: bool               true if the adapter claims only some paths of its hosts (SPA routes);
  *                                   content.js then mounts lazily and hides the panel off-route
  *   conversationUrl(convId): string
@@ -20,7 +23,8 @@
  *     tabTitleRe (strips site suffix from document.title), placeholders: RegExp,
  *     optional: routeRe (pathname regex the adapter is active on; omitted = whole host),
  *               idFromUrl(URL|Location) (ids carried in the query string),
- *               currentTitleSelector (on-page title of the OPEN conversation, e.g. a header) }
+ *               currentTitleSelector (on-page title of the OPEN conversation, e.g. a header),
+ *               normalizeId(id) (canonical form, e.g. lowercase UUID), providerFor(id), providers[] }
  * ALL site-specific values (selectors, regexes, title formats) live in the per-site
  * files and are GUESSES unless stated otherwise — verify in DevTools.
  */
@@ -37,7 +41,7 @@ GF.parseAnyUrl = (url) => {
     for (const a of GF.adapters) {
       if (!a.hosts.includes(u.hostname)) continue;
       const convId = a.idFromUrl(u);
-      if (convId) return { provider: a.id, convId };
+      if (convId) return { provider: a.providerFor(convId), convId };
     }
   } catch (_) { /* not a URL */ }
   return null;
@@ -47,10 +51,14 @@ GF.makeAdapter = (cfg) => ({
   id: cfg.id, label: cfg.label, badge: cfg.badge, hosts: cfg.hosts,
   get conversationLinkSelector() { return cfg.linkSelector; },
   routeScoped: !!cfg.routeRe,
+  providers: cfg.providers || [cfg.id],
+  providerFor(convId) { return cfg.providerFor ? cfg.providerFor(convId) : cfg.id; },
+  handles(provider) { return this.providers.includes(provider); },
   matches(loc) { return cfg.hosts.includes(loc.hostname) && (!cfg.routeRe || cfg.routeRe.test(loc.pathname || "")); },
   idFromPath(path) {
     if (cfg.idFromUrl) { try { return cfg.idFromUrl(new URL(path || "", "https://" + cfg.hosts[0])); } catch (_) { return null; } }
-    const m = cfg.pathRe.exec(path || ""); return m ? decodeURIComponent(m[1]) : null;
+    const m = cfg.pathRe.exec(path || ""); if (!m) return null;
+    const id = decodeURIComponent(m[1]); return cfg.normalizeId ? cfg.normalizeId(id) : id;
   },
   idFromUrl(u) { return cfg.idFromUrl ? cfg.idFromUrl(u) : this.idFromPath(u.pathname); },
   conversationUrl(id) { return cfg.urlFor(encodeURIComponent(id)); },
@@ -90,13 +98,13 @@ GF.makeAdapter = (cfg) => ({
     if (!convId) return null;
     const link = this.pageLinks().find(a => this.linkId(a) === convId);
     const cands = [link && this.linkTitle(link), this.headerTitle(), this.tabTitle()];
-    return { convId, title: cands.find(t => !this.isPlaceholder(t, convId)) || convId };
+    return { provider: this.providerFor(convId), convId, title: cands.find(t => !this.isPlaceholder(t, convId)) || convId };
   },
   parseConvLink(a) {
     const convId = this.linkId(a);
     if (!convId) return null;
     const t = this.linkTitle(a);
-    return { convId, title: this.isPlaceholder(t, convId) ? convId : t };
+    return { provider: this.providerFor(convId), convId, title: this.isPlaceholder(t, convId) ? convId : t };
   },
   /* SPA navigation: click the site's own history link (its router handles it); else full load. */
   navigate(convId) {

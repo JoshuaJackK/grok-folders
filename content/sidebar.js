@@ -380,7 +380,10 @@ GF.Sidebar = class {
         const prov = GF.adapterById(c.provider);
         const badge = this.el("span", { className: "badge", textContent: prov ? prov.badge.text : c.provider.slice(0, 3), title: prov ? prov.label : c.provider });
         if (prov) badge.style.background = prov.badge.color;
-        const a = this.el("a", { className: "conv", href: prov ? prov.conversationUrl(c.convId) : "#", title: (prov ? prov.label + ": " : "") + c.title },
+        // On a site that can open this chat in-app (e.g. a grok: chat while on X), link to the in-site URL.
+        const local = this.adapter.handles(c.provider);
+        const href = local ? this.adapter.conversationUrl(c.convId) : prov ? prov.conversationUrl(c.convId) : "#";
+        const a = this.el("a", { className: "conv", href, title: (prov ? prov.label + ": " : "") + c.title },
           badge, this.el("span", { className: "name", textContent: c.title || c.convId }), this.chips(c));
         const tg = this.el("button", { className: "mini", textContent: "#", title: "Tags" });
         tg.onclick = (e) => { e.preventDefault(); e.stopPropagation(); this.editTags("conv", c.key, c.tags); };
@@ -390,7 +393,7 @@ GF.Sidebar = class {
         a.addEventListener("click", (e) => {
           if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
           e.preventDefault();
-          if (c.provider === this.adapter.id) this.adapter.navigate(c.convId);      // same site: in-app navigation
+          if (local) this.adapter.navigate(c.convId);                               // same site: in-app navigation
           else if (prov) window.open(prov.conversationUrl(c.convId), "_blank", "noopener"); // other AI: new tab
         });
         const x = this.el("button", { className: "mini", textContent: "✕", title: "Remove from folder" });
@@ -660,7 +663,7 @@ GF.Sidebar = class {
     const conv = this.adapter.currentConversation();
     if (!conv) return alert("Open a conversation first.");
     if (!this.selected || !this.state.folders[this.selected]) return alert("Select a folder first (click it).");
-    await this.call(GF.MSG.ASSIGN_CONV, { provider: this.adapter.id, convId: conv.convId, title: conv.title, folderId: this.selected });
+    await this.call(GF.MSG.ASSIGN_CONV, { provider: conv.provider || this.adapter.id, convId: conv.convId, title: conv.title, folderId: this.selected });
   }
 };
 
@@ -677,7 +680,7 @@ GF.Sidebar.infoFromDataTransfer = (dt, adapter) => {
     if (!parsed) continue;
     let title = parsed.convId;
     const a = GF.adapterById(parsed.provider);
-    const link = parsed.provider === adapter.id && adapter.pageLinks().find(l => adapter.linkId(l) === parsed.convId);
+    const link = adapter.handles(parsed.provider) && adapter.pageLinks().find(l => adapter.linkId(l) === parsed.convId);
     if (link) title = adapter.parseConvLink(link).title;
     else if (raw === moz[0] && moz[1] && a && !a.isPlaceholder(moz[1].trim(), parsed.convId)) title = moz[1].trim();
     return { ...parsed, title };

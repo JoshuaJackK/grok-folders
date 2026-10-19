@@ -22,14 +22,15 @@ GF.TitleWatcher = class {
   }
   stop() { if (this.mo) this.mo.disconnect(); clearInterval(this.urlPoll); clearTimeout(this.timer); }
   schedule() { clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), this.debounceMs); }
-  /* Returns { convId: title } for saved conversations whose stored title differs. */
+  /* Returns { provider: { convId: title } } for saved conversations whose stored title differs. */
   diff() {
-    const st = this.getState(), p = this.adapter.id, out = {};
+    const st = this.getState(), out = {}; // { provider: { convId: title } } (Grok on X: "grok" and "grokx")
     if (!st || !st.convs) return out;
     // After SPA navigation, document.title may still show the previous chat: ignore it until it changes.
     const includeDocTitle = this.navTitle === null || document.title !== this.navTitle;
     if (includeDocTitle) this.navTitle = null;
     for (const [id, raw] of this.adapter.collectTitles({ includeDocTitle })) {
+      const p = this.adapter.providerFor ? this.adapter.providerFor(id) : this.adapter.id;
       const c = st.convs[p + ":" + id];
       if (!c) continue;                                  // never auto-add
       const t = raw.slice(0, GF.TITLE_MAX);
@@ -38,17 +39,17 @@ GF.TitleWatcher = class {
       // shows an old title must not overwrite a rename synced from another tab/device.
       const prev = this.seen.get(id); this.seen.set(id, t);
       if (prev === t || t === c.title) continue;
-      out[id] = t;
+      (out[p] = out[p] || {})[id] = t;
     }
     return out;
   }
   async flush() {
     if (this.adapter.routeScoped && !this.adapter.matches(location)) return; // e.g. X outside /i/grok
     if (this.inflight) return this.schedule();          // max one write per batch
-    const titles = this.diff();
-    if (!Object.keys(titles).length) return;
+    const byProv = this.diff();
+    if (!Object.keys(byProv).length) return;
     this.inflight = true;
-    try { await this.send(GF.MSG.UPDATE_TITLES, { provider: this.adapter.id, titles }); }
+    try { for (const [provider, titles] of Object.entries(byProv)) await this.send(GF.MSG.UPDATE_TITLES, { provider, titles }); } // one per provider (usually one)
     finally { this.inflight = false; }
   }
 };
