@@ -7,12 +7,15 @@ Podprte strani (vsaka ima svoj adapter v `content/adapters/`):
 | Ponudnik | Gostitelj | URL pogovora | Značka |
 |---|---|---|---|
 | Grok | grok.com | `/c/<id>` | Gk |
+| Grok (X) | x.com, twitter.com | `/i/grok?conversation=<številčni id>` | GX |
 | ChatGPT | chatgpt.com | `/c/<id>`, `/g/<gpt>/c/<id>` | GPT |
 | Claude | claude.ai | `/chat/<uuid>` | Cl |
 | Gemini | gemini.google.com | `/app/<id>`, `/u/<n>/app/<id>` | Gm |
 | Perplexity | www.perplexity.ai | `/search/<slug>` | Px |
 
-⚠️ Vzorci URL so preverjeni po javnih virih; **selektorji, formati naslovov zavihkov in nadomestni naslovi so ugibanja** (označeno v vsakem adapterju). Klik na pogovor iste strani = navigacija znotraj aplikacije; pogovor drugega ponudnika se odpre v novem zavihku. Filter „All AIs“ omeji prikaz na enega ponudnika. Gecko id ostaja `grok-folders@joshuajackk.github.io`.
+⚠️ Vzorci URL so preverjeni po javnih virih; **selektorji, formati naslovov zavihkov in nadomestni naslovi so ugibanja** (označeno v vsakem adapterju). Klik na pogovor iste strani = navigacija znotraj aplikacije; pogovor drugega ponudnika se odpre v novem zavihku. Filter „All AIs“ omeji prikaz na enega ponudnika.
+
+**Grok v X** (`content/adapters/grokx.js`, ponudnik `grokx`): pogovori imajo **lasten prostor id‑jev** (`grokx:<id>`), ločen od grok.com. Id je v poizvedbi (`?conversation=`), ne v poti. Ker je X ena sama SPA, se skript naloži na celem x.com, a plošča 📁 se prikaže **samo na `/i/grok`** (preverjanje ob SPA navigaciji); drugje na X ni gumba, vlečenje in posodabljanje naslovov sta neaktivna in DOM X ostane nedotaknjen. Klik na shranjen pogovor uporabi Xovo povezavo v zgodovini (če obstaja), sicer naloži URL. ⚠️ Selektorji zgodovine (`a[href*="/i/grok?conversation="]`), naslova in format naslova zavihka („… / X“) so ugibanje. Gecko id ostaja `grok-folders@joshuajackk.github.io`.
 
 ## Funkcije (MVP)
 - Gumb 📁 lahko premakneš z miško (položaj se shrani lokalno v `storage.local` pod `uiPos`); dvoklik ga ponastavi.
@@ -39,7 +42,7 @@ background/storage.js    model shranjevanja: kodiranje, razkosanje, migracije, f
 background/background.js EDINI lastnik shrambe; obdela sporočila, oddaja spremembe zavihkom,
                          posluša storage.onChanged (sync iz drugih naprav)
 content/adapters/base.js vmesnik ponudnika (provider adapter) + registracija
-content/adapters/*.js    GF.makeAdapter (base.js) + konfiguracija za grok, chatgpt, claude, gemini, perplexity
+content/adapters/*.js    GF.makeAdapter (base.js) + konfiguracija za grok, grokx (Grok v X), chatgpt, claude, gemini, perplexity
 content/dnd.js           vlečenje pogovorov iz stranske vrstice strani (native DnD v capture fazi + pointer fallback)
 content/titles.js        samodejno posodabljanje naslovov (TitleWatcher)
 content/sidebar.js       UI v zaprtem shadow rootu (brez innerHTML)
@@ -76,6 +79,7 @@ V Firefoxu MV3 je dostop do strani **izbiren**: ob posodobitvi se nove strani ne
 - ob namestitvi/posodobitvi se, če kakšna stran manjka, odpre stran `ui/permissions.html` s stanjem in gumbom **Grant access**;
 - gumb razširitve v orodni vrstici (z rdečim „!“, če kaj manjka) zahteva manjkajoči dostop; ko je vse odobreno, odpre stran s stanjem;
 - ročno: `about:addons` → AI Folders → Permissions. Po odobritvi znova naloži odprte zavihke.
+- **0.5.3 doda x.com in twitter.com** (Grok v X): Firefox ob posodobitvi MV3 razširitve novih strani ne odobri in ne vpraša (bug 1893232) – posodobitev se namesti tiho, prikaže se „!“ na gumbu in odpre se `ui/permissions.html`; dostop odobriš s klikom na gumb ali v `about:addons`.
 
 ## Namestitev (about:debugging)
 1. Firefox ≥ 115 → `about:debugging#/runtime/this-firefox`
@@ -91,6 +95,6 @@ Lint: `npx web-ext lint` · Zagon: `npx web-ext run`
 2. Ob prvem zagonu zahtevati host permission (`permissions.request`), če ni odobren.
 4. Sporočanje stanja in konflikti pri sync: merge po `ts` namesto „zadnji zapis zmaga“; preklop nazaj iz local v sync.
 5. Stran z nastavitvami.
-6. Testi: `node tests/import.test.js`, `node tests/move.test.js`, `node tests/tags.test.js`, `node tests/ui.test.js`, `node tests/titles.test.js`, `node tests/adapters.test.js`, `node tests/permissions.test.js`, `node tests/pagednd.test.js`, `node tests/prefs.test.js`, `node tests/folderstyle.test.js` (jsdom); dodati še `encode/decode/chunk`.
+6. Testi: `node tests/import.test.js`, `node tests/move.test.js`, `node tests/tags.test.js`, `node tests/ui.test.js`, `node tests/titles.test.js`, `node tests/adapters.test.js`, `node tests/permissions.test.js`, `node tests/pagednd.test.js`, `node tests/prefs.test.js`, `node tests/folderstyle.test.js`, `node tests/grokx.test.js` (jsdom); dodati še `encode/decode/chunk`.
 7. Adapterji za druge ponudnike (ChatGPT, Claude) prek istega vmesnika.
 8. Zamenjava `prompt/confirm` z lastnimi dialogi v shadow DOM; i18n (`_locales`).

@@ -1,6 +1,6 @@
 /* Extension page: shows per-site access and requests missing host permissions (button = user gesture). */
 var GF = globalThis.GF;
-const LABELS = { "grok.com": "Grok", "chatgpt.com": "ChatGPT", "claude.ai": "Claude", "gemini.google.com": "Gemini", "www.perplexity.ai": "Perplexity", "perplexity.ai": "Perplexity (no www)" };
+const LABELS = { "grok.com": "Grok", "chatgpt.com": "ChatGPT", "claude.ai": "Claude", "gemini.google.com": "Gemini", "www.perplexity.ai": "Perplexity", "perplexity.ai": "Perplexity (no www)", "x.com": "Grok on X (x.com/i/grok)", "twitter.com": "Grok on X (twitter.com)" };
 const hostOf = (o) => o.replace(/^https:\/\//, "").replace(/\/\*$/, "");
 
 async function status() {

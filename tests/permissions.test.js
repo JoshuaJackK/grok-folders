@@ -52,6 +52,14 @@ function bg(granted) {
   assert.strictEqual(b.calls.tabs.length, 2);
   console.log("PASS update with missing sites: page opens, action requests, badge");
 
+  // 0.5.2 -> 0.5.3: all old sites granted, only x.com/twitter.com new -> badge "!" and page opens.
+  b = bg(new Set(manifest.host_permissions.filter(o => !/x\.com|twitter\.com/.test(o)))); await tick(5);
+  await b.L.installed({ reason: "update", previousVersion: "0.5.2" }); await tick(5);
+  assert.strictEqual(b.calls.badge.at(-1), "!", "x.com missing -> badge");
+  assert.deepStrictEqual(b.calls.tabs, ["moz-extension://x/ui/permissions.html"]);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(await b.ctx.GF.Perms.missing())), ["https://x.com/*", "https://twitter.com/*"]);
+  console.log("PASS update adding x.com: badge + permissions page");
+
   // Everything granted: no page on update; browser_update reason ignored.
   b = bg(new Set(manifest.host_permissions)); await tick(5);
   await b.L.installed({ reason: "update" }); await b.L.installed({ reason: "browser_update" });
@@ -69,18 +77,20 @@ function bg(granted) {
     for (const f of ["shared/constants.js", "ui/permissions.js"]) w.eval(fs.readFileSync(path.join(R, f), "utf8"));
     await w.GF.permissionsReady;
     const st = () => [...w.document.querySelectorAll("#sites td.ok, #sites td.no")].map(td => td.className);
-    assert.deepStrictEqual(st(), ["ok", "no", "no", "no", "no", "no"]);
-    assert.match(w.document.getElementById("grant").textContent, /5 site/);
+    assert.deepStrictEqual(st(), ["ok", "no", "no", "no", "no", "no", "no", "no"]);
+    assert.match(w.document.getElementById("grant").textContent, /7 site/);
+    assert.ok([...w.document.querySelectorAll("#sites td")].some(td => td.textContent === "x.com"), "x.com listed");
+    assert.ok(w.document.body.textContent.includes("Grok on X"), "x.com labelled Grok on X");
     w.document.getElementById("grant").click();
     assert.strictEqual(req.length, 1, "request in click handler");
     await tick(10);
-    assert.deepStrictEqual(st(), ["ok", "ok", "ok", "ok", "ok", "ok"]);
+    assert.deepStrictEqual(st(), ["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
     assert.ok(w.document.getElementById("grant").disabled);
     console.log("PASS permissions page");
   }
 
   // Content script robustness: a broken adapter must not block others; panel mounts on each site.
-  for (const url of ["https://chatgpt.com/c/1", "https://claude.ai/chat/1", "https://gemini.google.com/app/1", "https://www.perplexity.ai/search/x", "https://perplexity.ai/search/x"]) {
+  for (const url of ["https://chatgpt.com/c/1", "https://claude.ai/chat/1", "https://gemini.google.com/app/1", "https://www.perplexity.ai/search/x", "https://perplexity.ai/search/x", "https://x.com/i/grok?conversation=1", "https://twitter.com/i/grok"]) {
     const dom = new JSDOM("<body></body>", { url, runScripts: "outside-only", pretendToBeVisual: true });
     const w = dom.window;
     w.browser = { storage: { local: { get: async () => ({}), set: async () => {} } }, runtime: { sendMessage: async () => ({ ok: true, state: { folders: {}, convs: {}, tags: {} }, mode: "sync" }), onMessage: { addListener() {} } } };

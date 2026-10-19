@@ -1,5 +1,5 @@
 /*
- * Title watcher: keeps titles of ALREADY SAVED conversations in sync with grok.com.
+ * Title watcher: keeps titles of ALREADY SAVED conversations in sync with the site (any adapter).
  * - Debounced MutationObserver (DOM + <title>) and SPA navigation check (URL polling/popstate).
  * - One batch message per debounce window; only titles that actually differ are sent.
  * - Never adds unsaved conversations; placeholder/empty titles are ignored (adapter decides).
@@ -43,6 +43,7 @@ GF.TitleWatcher = class {
     return out;
   }
   async flush() {
+    if (this.adapter.routeScoped && !this.adapter.matches(location)) return; // e.g. X outside /i/grok
     if (this.inflight) return this.schedule();          // max one write per batch
     const titles = this.diff();
     if (!Object.keys(titles).length) return;

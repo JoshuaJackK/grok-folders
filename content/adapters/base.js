@@ -4,6 +4,9 @@
  *   id, label, badge {text, color}, hosts[]   identity / display
  *   matches(location): bool
  *   idFromPath(pathname): convId | null
+ *   idFromUrl(URL|Location): convId | null   (default: idFromPath(pathname); query-based ids override)
+ *   routeScoped: bool               true if the adapter claims only some paths of its hosts (SPA routes);
+ *                                   content.js then mounts lazily and hides the panel off-route
  *   conversationUrl(convId): string
  *   currentConversation(): {convId, title} | null
  *   parseConvLink(anchorEl): {convId, title} | null
@@ -14,7 +17,10 @@
  *
  * GF.makeAdapter(config) builds an adapter from a small per-site config:
  *   { id, label, badge, hosts, pathRe, urlFor(id), linkSelector, linkTitleSelector,
- *     tabTitleRe (strips site suffix from document.title), placeholders: RegExp }
+ *     tabTitleRe (strips site suffix from document.title), placeholders: RegExp,
+ *     optional: routeRe (pathname regex the adapter is active on; omitted = whole host),
+ *               idFromUrl(URL|Location) (ids carried in the query string),
+ *               currentTitleSelector (on-page title of the OPEN conversation, e.g. a header) }
  * ALL site-specific values (selectors, regexes, title formats) live in the per-site
  * files and are GUESSES unless stated otherwise — verify in DevTools.
  */
@@ -30,7 +36,7 @@ GF.parseAnyUrl = (url) => {
     const u = new URL(url, location.origin);
     for (const a of GF.adapters) {
       if (!a.hosts.includes(u.hostname)) continue;
-      const convId = a.idFromPath(u.pathname);
+      const convId = a.idFromUrl(u);
       if (convId) return { provider: a.id, convId };
     }
   } catch (_) { /* not a URL */ }
@@ -40,15 +46,20 @@ GF.parseAnyUrl = (url) => {
 GF.makeAdapter = (cfg) => ({
   id: cfg.id, label: cfg.label, badge: cfg.badge, hosts: cfg.hosts,
   get conversationLinkSelector() { return cfg.linkSelector; },
-  matches(loc) { return cfg.hosts.includes(loc.hostname); },
-  idFromPath(path) { const m = cfg.pathRe.exec(path || ""); return m ? decodeURIComponent(m[1]) : null; },
+  routeScoped: !!cfg.routeRe,
+  matches(loc) { return cfg.hosts.includes(loc.hostname) && (!cfg.routeRe || cfg.routeRe.test(loc.pathname || "")); },
+  idFromPath(path) {
+    if (cfg.idFromUrl) { try { return cfg.idFromUrl(new URL(path || "", "https://" + cfg.hosts[0])); } catch (_) { return null; } }
+    const m = cfg.pathRe.exec(path || ""); return m ? decodeURIComponent(m[1]) : null;
+  },
+  idFromUrl(u) { return cfg.idFromUrl ? cfg.idFromUrl(u) : this.idFromPath(u.pathname); },
   conversationUrl(id) { return cfg.urlFor(encodeURIComponent(id)); },
   isPlaceholder(title, convId) {
     const t = (title || "").trim();
     return !t || t === convId || cfg.placeholders.test(t);
   },
   linkId(a) {
-    try { const u = new URL(a.getAttribute("href"), location.origin); return this.hosts.includes(u.hostname) ? this.idFromPath(u.pathname) : null; }
+    try { const u = new URL(a.getAttribute("href"), location.origin); return this.hosts.includes(u.hostname) ? this.idFromUrl(u) : null; }
     catch (_) { return null; }
   },
   linkTitle(a) {
@@ -56,6 +67,10 @@ GF.makeAdapter = (cfg) => ({
     return clean(cfg.linkTitleSelector && a.querySelector(cfg.linkTitleSelector)) || clean(a);
   },
   tabTitle() { return document.title.replace(cfg.tabTitleRe, "").trim(); },
+  headerTitle() {
+    const n = cfg.currentTitleSelector && document.querySelector(cfg.currentTitleSelector);
+    return n ? (n.textContent || "").replace(/\s+/g, " ").trim() : "";
+  },
   pageLinks() { return [...document.querySelectorAll(cfg.linkSelector)].filter(a => this.linkId(a)); },
   collectTitles({ includeDocTitle = true } = {}) {
     const out = new Map();
@@ -63,18 +78,18 @@ GF.makeAdapter = (cfg) => ({
       const id = this.linkId(a), t = this.linkTitle(a);
       if (!this.isPlaceholder(t, id)) out.set(id, t);
     }
-    const cur = this.idFromPath(location.pathname);
+    const cur = this.idFromUrl(location);
     if (includeDocTitle && cur && !out.has(cur)) {
-      const t = this.tabTitle();
-      if (!this.isPlaceholder(t, cur)) out.set(cur, t);
+      const t = [this.headerTitle(), this.tabTitle()].find(x => !this.isPlaceholder(x, cur));
+      if (t) out.set(cur, t);
     }
     return out;
   },
   currentConversation() {
-    const convId = this.idFromPath(location.pathname);
+    const convId = this.idFromUrl(location);
     if (!convId) return null;
     const link = this.pageLinks().find(a => this.linkId(a) === convId);
-    const cands = [link && this.linkTitle(link), this.tabTitle()];
+    const cands = [link && this.linkTitle(link), this.headerTitle(), this.tabTitle()];
     return { convId, title: cands.find(t => !this.isPlaceholder(t, convId)) || convId };
   },
   parseConvLink(a) {

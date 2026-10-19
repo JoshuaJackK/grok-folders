@@ -29,7 +29,7 @@ GF.colorIndex = (c) => {
 };
 GF.TITLE_MAX = 80; // stored title length (storage.sync quota)
 /* Supported sites (keep in sync with manifest host_permissions / content_scripts.matches). */
-GF.HOST_MATCHES = ["https://grok.com/*", "https://chatgpt.com/*", "https://claude.ai/*", "https://gemini.google.com/*", "https://www.perplexity.ai/*", "https://perplexity.ai/*"];
+GF.HOST_MATCHES = ["https://grok.com/*", "https://chatgpt.com/*", "https://claude.ai/*", "https://gemini.google.com/*", "https://www.perplexity.ai/*", "https://perplexity.ai/*", "https://x.com/*", "https://twitter.com/*"];
 /* Font stacks (local fonts only). Order matters: folder style stores the 1-based index. */
 GF.FONTS = {
   system: { label: "System", stack: 'system-ui,-apple-system,"Segoe UI",Roboto,sans-serif' },

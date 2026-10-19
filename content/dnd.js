@@ -17,8 +17,11 @@ GF.PageDnD = class {
     this.press = null; this.fallback = null; this.nativeActive = false;
   }
   log(...a) { console.info("[AI Folders]", ...a); }
+  /* Route-scoped adapters (Grok on X): stay inert outside the adapter's route so the rest of X is untouched. */
+  active() { if (!this.adapter.routeScoped) return true; try { return this.adapter.matches(location); } catch (_) { return false; } }
   /* Conversation link for an event (composedPath handles shadow DOM / nested spans). */
   linkFor(e) {
+    if (!this.active()) return null;
     const path = e.composedPath ? e.composedPath() : [];
     if (path.includes(this.sidebar.host) || e.target === this.sidebar.host) return null; // our own panel
     for (const n of path.length ? path : [e.target]) {
@@ -46,6 +49,7 @@ GF.PageDnD = class {
   }
   /* Re-enable native dragging on conversation links the site marked draggable="false". */
   enableDraggable() {
+    if (!this.active()) return;
     for (const a of this.adapter.pageLinks()) if (a.getAttribute("draggable") === "false") a.setAttribute("draggable", "true");
   }
   onDragStart(e) {

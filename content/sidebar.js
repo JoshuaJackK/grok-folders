@@ -658,7 +658,7 @@ GF.Sidebar = class {
 
   async addCurrent() {
     const conv = this.adapter.currentConversation();
-    if (!conv) return alert("Open a conversation (/c/<id>) first.");
+    if (!conv) return alert("Open a conversation first.");
     if (!this.selected || !this.state.folders[this.selected]) return alert("Select a folder first (click it).");
     await this.call(GF.MSG.ASSIGN_CONV, { provider: this.adapter.id, convId: conv.convId, title: conv.title, folderId: this.selected });
   }

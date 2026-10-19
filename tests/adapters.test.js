@@ -16,14 +16,19 @@ const CASES = {
   gemini: { url: "https://gemini.google.com/u/1/app/5f2a-cur", tab: "Gemini", links: [["/app/5f2a-a", "Gemini one"], ["/u/1/app/5f2a-b", "Gemini two"], ["/app", "New chat"]],
     paths: { "/app/5f2a": "5f2a", "/u/2/app/5f2a": "5f2a", "/app": null, "/share/x": null }, urlFor: ["5f2a", "https://gemini.google.com/app/5f2a"] },
   perplexity: { url: "https://www.perplexity.ai/search/how-to-x-AbC123", tab: "How to X - Perplexity", links: [["/search/what-is-y-Zz9", "What is Y"], ["/library", "Library"]],
-    paths: { "/search/how-to-x-AbC123": "how-to-x-AbC123", "/discover": null }, urlFor: ["s-1", "https://www.perplexity.ai/search/s-1"] }
+    paths: { "/search/how-to-x-AbC123": "how-to-x-AbC123", "/discover": null }, urlFor: ["s-1", "https://www.perplexity.ai/search/s-1"] },
+  grokx: { url: "https://x.com/i/grok?conversation=1990017815781278167", tab: "(3) Current X chat / X",
+    links: [["/i/grok?conversation=111", "X one"], ["https://twitter.com/i/grok?conversation=333", "Tw three"], ["/i/grok?conversation=222", "Grok"], ["/home", "Home"], ["/i/grok", "New chat"]],
+    paths: { "/i/grok?conversation=123": "123", "/i/grok/?conversation=123&x=1": "123", "/i/grok": null, "/i/grok?conversation=abc": null,
+      "/home?conversation=123": null, "/i/grokx?conversation=1": null, "/c/123": null }, urlFor: ["123", "https://x.com/i/grok?conversation=123"], rt: "987654321" }
 };
 const EXPECT_TITLES = {
   grok: { g1: "Grok one", "g-cur": "Current Grok chat" },
   chatgpt: { "6710-a": "GPT one", "6710-b": "GPT two", "6710-cur": "Current GPT chat" },
   claude: { "0b1c-a": "Claude one", "0b1c-cur": "Current Claude chat" },
   gemini: { "5f2a-a": "Gemini one", "5f2a-b": "Gemini two" },            // tab "Gemini" = placeholder
-  perplexity: { "what-is-y-Zz9": "What is Y", "how-to-x-AbC123": "How to X" }
+  perplexity: { "what-is-y-Zz9": "What is Y", "how-to-x-AbC123": "How to X" },
+  grokx: { 111: "X one", 333: "Tw three", "1990017815781278167": "Current X chat" } // "Grok" = placeholder
 };
 
 function boot(c, state) {
@@ -56,14 +61,15 @@ const emptyState = { folders: {}, convs: {}, tags: {} };
     const { w, root } = boot(c, emptyState); await tick(10);
     const a = w.GF.pickAdapter();
     assert.strictEqual(a && a.id, id, "pickAdapter " + id);
-    for (const [p, exp] of Object.entries(c.paths)) assert.strictEqual(a.idFromPath(new URL(p, c.url).pathname), exp, `${id} idFromPath ${p}`);
+    for (const [p, exp] of Object.entries(c.paths)) assert.strictEqual(a.idFromUrl(new URL(p, c.url)), exp, `${id} idFromPath ${p}`);
     assert.strictEqual(a.conversationUrl(c.urlFor[0]), c.urlFor[1]);
     assert.deepStrictEqual(Object.fromEntries(a.collectTitles()), EXPECT_TITLES[id], id + " collectTitles");
     const cur = a.currentConversation();
     assert.ok(cur && cur.convId, id + " currentConversation");
     assert.ok(root().querySelector(".toggle"), id + " sidebar mounted");
     // round trip: URL built by adapter is parsed back by GF.parseAnyUrl
-    assert.deepStrictEqual(JSON.parse(JSON.stringify(w.GF.parseAnyUrl(a.conversationUrl("zz-1")))), { provider: id, convId: "zz-1" });
+    const rt = c.rt || "zz-1";
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(w.GF.parseAnyUrl(a.conversationUrl(rt)))), { provider: id, convId: rt });
     w.close();
     console.log("PASS adapter " + id);
   }
