@@ -18,9 +18,14 @@ const CASES = {
   perplexity: { url: "https://www.perplexity.ai/search/how-to-x-AbC123", tab: "How to X - Perplexity", links: [["/search/what-is-y-Zz9", "What is Y"], ["/library", "Library"]],
     paths: { "/search/how-to-x-AbC123": "how-to-x-AbC123", "/discover": null }, urlFor: ["s-1", "https://www.perplexity.ai/search/s-1"] },
   grokx: { url: "https://x.com/i/grok?conversation=1990017815781278167", tab: "(3) Current X chat / X",
-    links: [["/i/grok?conversation=111", "X one"], ["https://twitter.com/i/grok?conversation=333", "Tw three"], ["/i/grok?conversation=222", "Grok"], ["/home", "Home"], ["/i/grok", "New chat"]],
-    paths: { "/i/grok?conversation=123": "123", "/i/grok/?conversation=123&x=1": "123", "/i/grok": null, "/i/grok?conversation=abc": null,
-      "/home?conversation=123": null, "/i/grokx?conversation=1": null, "/c/123": null }, urlFor: ["123", "https://x.com/i/grok?conversation=123"], rt: "987654321" }
+    links: [["/i/grok?conversation=111111", "X one"], ["https://twitter.com/i/grok?conversation=333333", "Tw three"], ["/i/grok?conversation=222222", "Grok"],
+      ["/i/grok?conversation=5d1f0a2e-0b7c-4c1e-9a55-2f6f7a1b9c00", "UUID chat"], ["/home", "Home"], ["/i/grok", "New chat"]],
+    paths: { "/i/grok?conversation=123456": "123456", "/i/grok/?conversation=123456&x=1": "123456",
+      "/i/grok?conversation=124e3867-8ba5-476d-aa9a-0395edd41b65": "124e3867-8ba5-476d-aa9a-0395edd41b65",
+      "/i/grok?conversation=124E3867-8BA5-476D-AA9A-0395EDD41B65": "124E3867-8BA5-476D-AA9A-0395EDD41B65",
+      "/i/grok": null, "/i/grok?conversation=": null, "/i/grok?conversation=abc": null, "/i/grok?conversation=abc%20def%3Cx": null, "/i/grok?conversation=ab_cd/ef": null,
+      "/home?conversation=123456": null, "/i/grokx?conversation=123456": null, "/c/123456": null },
+    urlFor: ["124e3867-8ba5-476d-aa9a-0395edd41b65", "https://x.com/i/grok?conversation=124e3867-8ba5-476d-aa9a-0395edd41b65"], rt: "987654321" }
 };
 const EXPECT_TITLES = {
   grok: { g1: "Grok one", "g-cur": "Current Grok chat" },
@@ -28,7 +33,7 @@ const EXPECT_TITLES = {
   claude: { "0b1c-a": "Claude one", "0b1c-cur": "Current Claude chat" },
   gemini: { "5f2a-a": "Gemini one", "5f2a-b": "Gemini two" },            // tab "Gemini" = placeholder
   perplexity: { "what-is-y-Zz9": "What is Y", "how-to-x-AbC123": "How to X" },
-  grokx: { 111: "X one", 333: "Tw three", "1990017815781278167": "Current X chat" } // "Grok" = placeholder
+  grokx: { 111111: "X one", 333333: "Tw three", "5d1f0a2e-0b7c-4c1e-9a55-2f6f7a1b9c00": "UUID chat", "1990017815781278167": "Current X chat" } // "Grok" = placeholder
 };
 
 function boot(c, state) {

@@ -59,7 +59,7 @@ const HISTORY = `<div data-testid="grokChatHistory">
     const dt = new FakeDT(); p.ev("dragstart", p.w.document.querySelector('a[data-x] span'), { dataTransfer: dt });
     assert.strictEqual(dt.getData("application/x-gf-conv"), "", "page drag inert off-route");
     p.w.history.back(); await tick(40);
-    p.w.history.pushState({}, "", "/i/grok?conversation=5"); await tick(40);
+    p.w.history.pushState({}, "", "/i/grok?conversation=555555"); await tick(40);
     assert.strictEqual(p.host().style.display, "", "shown again");
     assert.strictEqual(p.w.document.querySelectorAll("#grok-folders-host").length, 1, "mounted once");
     p.w.close();
@@ -83,7 +83,7 @@ const HISTORY = `<div data-testid="grokChatHistory">
     assert.deepStrictEqual(JSON.parse(dt.getData("application/x-gf-conv")), { provider: "grokx", convId: "1111111111111111111", title: "Rust lifetimes" });
     assert.strictEqual(dt.getData("text/uri-list"), "https://x.com/i/grok?conversation=1111111111111111111");
     // grok.com and X ids are separate spaces
-    assert.deepStrictEqual(JSON.parse(JSON.stringify(p.w.GF.parseAnyUrl("https://twitter.com/i/grok?conversation=42"))), { provider: "grokx", convId: "42" });
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(p.w.GF.parseAnyUrl("https://twitter.com/i/grok?conversation=424242"))), { provider: "grokx", convId: "424242" });
     assert.deepStrictEqual(JSON.parse(JSON.stringify(p.w.GF.parseAnyUrl("https://grok.com/c/42"))), { provider: "grok", convId: "42" });
     assert.strictEqual(p.w.GF.parseAnyUrl("https://x.com/home?conversation=42"), null);
     // panel rows: badge + in-app navigation via the site's own link
@@ -102,6 +102,40 @@ const HISTORY = `<div data-testid="grokChatHistory">
     assert.strictEqual(upd.at(-1).payload.titles["2222222222222222222"], "Trip to Bled 2026");
     p.w.close();
     console.log("PASS /i/grok: page drag, ids, badges, site-link navigation, title sync");
+  }
+  // 3) Regression (v0.5.3 bug): UUID conversation ids. "+ Current chat" must add it, not alert.
+  {
+    const UUID = "124e3867-8ba5-476d-aa9a-0395edd41b65";
+    const state = { tags: {}, folders: { F: { id: "F", name: "Topic", parentId: null, order: 0, color: 0, tags: [] } },
+      convs: { ["grokx:" + UUID]: { key: "grokx:" + UUID, provider: "grokx", convId: UUID, folderId: "F", title: "Old", order: 0, tags: [] } } };
+    const p = boot("https://x.com/i/grok?conversation=" + UUID,
+      `<div data-testid="grokChatHistory"><a href="/i/grok?conversation=${UUID}"><div dir="ltr"><span>UUID chat title</span></div></a>
+       <a href="/i/grok?conversation=1990017815781278167"><span>Numeric chat</span></a></div>`, { ...state, convs: {} });
+    const alerts = []; p.w.alert = (m) => alerts.push(m);
+    await tick(20);
+    const a = p.w.GF.pickAdapter();
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(a.currentConversation())), { convId: UUID, title: "UUID chat title" });
+    assert.deepStrictEqual(Object.fromEntries(a.collectTitles()), { [UUID]: "UUID chat title", "1990017815781278167": "Numeric chat" });
+    p.root().querySelector(".panel").classList.add("open");
+    p.ev("click", p.root().querySelector(".folder"));
+    const btn = [...p.root().querySelectorAll("button")].find(b => b.textContent === "+ Current chat");
+    btn.click(); await tick(10);
+    assert.deepStrictEqual(alerts, [], "no 'Open a conversation first' alert");
+    const asg = p.sent.filter(m => m.type === "gf:assignConv").map(m => m.payload);
+    assert.deepStrictEqual(asg, [{ provider: "grokx", convId: UUID, title: "UUID chat title", folderId: "F" }]);
+    // page drag carries the UUID; grok.com UUID stays a separate key space
+    const dt = new FakeDT(); p.ev("dragstart", p.w.document.querySelector("a span"), { dataTransfer: dt });
+    assert.strictEqual(JSON.parse(dt.getData("application/x-gf-conv")).convId, UUID);
+    assert.strictEqual(p.w.GF.parseAnyUrl("https://grok.com/c/" + UUID).provider, "grok");
+    assert.strictEqual(p.w.GF.parseAnyUrl("https://x.com/i/grok?conversation=" + UUID).provider, "grokx");
+    p.w.close();
+    // title sync for a saved UUID conversation
+    const q = boot("https://x.com/i/grok?conversation=" + UUID, `<a href="/i/grok?conversation=${UUID}"><span>Renamed UUID chat</span></a>`, state);
+    await tick(80);
+    const upd = q.sent.filter(m => m.type === "gf:updateTitles");
+    assert.strictEqual(upd.at(-1).payload.titles[UUID], "Renamed UUID chat");
+    q.w.close();
+    console.log("PASS UUID conversation ids: add current, titles, drag, separate from grok.com");
   }
   console.log("All tests passed");
   process.exit(0);

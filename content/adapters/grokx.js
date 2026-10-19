@@ -1,7 +1,8 @@
 /*
  * Grok inside X (x.com/i/grok, twitter.com/i/grok). Own ID space ("grokx:<id>"), separate from grok.com.
  * VERIFIED (public sources: userscripts/exporters, user-shared links): conversation URL is
- *   https://x.com/i/grok?conversation=<numeric rest_id>   (id lives in the QUERY string, not the path).
+ *   https://x.com/i/grok?conversation=<id>   (id lives in the QUERY string, not the path).
+ *   <id> is a numeric rest_id (older chats) or a UUID (seen on v0.5.3: 124e3867-8ba5-476d-aa9a-0395edd41b65).
  * X is one SPA: the content script is injected on all of x.com but this adapter only claims /i/grok
  * (routeRe); content.js mounts lazily and hides the panel elsewhere on X.
  * Everything below marked GUESS is unverified against the live DOM — check in DevTools.
@@ -15,7 +16,9 @@ GF.registerAdapter(GF.makeAdapter({
   idFromUrl: (u) => {
     if (!/^\/i\/grok\/?$/.test(u.pathname || "")) return null;
     const id = new URLSearchParams(u.search || "").get("conversation");
-    return id && /^\d{1,25}$/.test(id) ? id : null;            // rest_id is a numeric snowflake
+    // Ids seen in the wild: numeric snowflakes (1990017815781278167) AND UUIDs (124e3867-8ba5-…), so
+    // accept any safe token. Stored as-is (case kept) under "grokx:<id>".
+    return id && /^[A-Za-z0-9-]{6,100}$/.test(id) ? id : null;
   },
   urlFor: (id) => "https://x.com/i/grok?conversation=" + id,
   // GUESS: history drawer/panel ("Chat history" button inside /i/grok) renders items as links to

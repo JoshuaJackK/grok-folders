@@ -7,7 +7,7 @@ Podprte strani (vsaka ima svoj adapter v `content/adapters/`):
 | Ponudnik | Gostitelj | URL pogovora | Značka |
 |---|---|---|---|
 | Grok | grok.com | `/c/<id>` | Gk |
-| Grok (X) | x.com, twitter.com | `/i/grok?conversation=<številčni id>` | GX |
+| Grok (X) | x.com, twitter.com | `/i/grok?conversation=<id>` (UUID ali številčni) | GX |
 | ChatGPT | chatgpt.com | `/c/<id>`, `/g/<gpt>/c/<id>` | GPT |
 | Claude | claude.ai | `/chat/<uuid>` | Cl |
 | Gemini | gemini.google.com | `/app/<id>`, `/u/<n>/app/<id>` | Gm |
