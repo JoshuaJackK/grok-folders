@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AI Folders",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Organize AI chat conversations (Grok, Grok on X, ChatGPT, Claude, Gemini, Perplexity) into nested folders with tags.",
   "browser_specific_settings": {
     "gecko": {
