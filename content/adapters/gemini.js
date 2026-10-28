@@ -11,4 +11,4 @@ GF.registerAdapter(GF.makeAdapter({
   tabTitleRe: /\s*[-|–]\s*(Google\s+)?Gemini\s*$/i,      // GUESS
   placeholders: /^(gemini|google gemini|new chat|conversation with gemini|untitled)$/i // GUESS
 }));
-} catch (e) { console.error("[AI Folders] adapter failed to load: gemini.js", e); }
+} catch (e) { console.error("[SI Folders] adapter failed to load: gemini.js", e); }

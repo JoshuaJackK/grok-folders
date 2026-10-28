@@ -11,4 +11,4 @@ GF.registerAdapter(GF.makeAdapter({
   tabTitleRe: /\s*[-|–]\s*Grok\s*$/i,                                   // GUESS: "<title> - Grok"
   placeholders: /^(new chat|new conversation|untitled|grok|novi klepet|nov pogovor)$/i // GUESS
 }));
-} catch (e) { console.error("[AI Folders] adapter failed to load: grok.js", e); }
+} catch (e) { console.error("[SI Folders] adapter failed to load: grok.js", e); }

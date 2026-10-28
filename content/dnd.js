@@ -1,5 +1,5 @@
 /*
- * Dragging conversations from the SITE's own sidebar onto the AI Folders panel.
+ * Dragging conversations from the SITE's own sidebar onto the SI Folders panel.
  * Sites differ: some set draggable="false" on history links, some run their own drag libraries
  * (pointer events, preventDefault/stopPropagation on dragstart). Strategy:
  *  1. Native DnD: window-level CAPTURE dragstart (runs before page handlers) annotates the drag with
@@ -7,7 +7,7 @@
  *  2. Pointer fallback: if no native dragstart happens, a press on a conversation link that moves
  *     > threshold while the panel is open starts our own ghost drag; release over a folder row drops it.
  *     The click that would follow is swallowed so the site doesn't navigate.
- * Debug logs are prefixed "[AI Folders]".
+ * Debug logs are prefixed "[SI Folders]".
  */
 var GF = globalThis.GF;
 GF.PageDnD = class {
@@ -16,7 +16,7 @@ GF.PageDnD = class {
     this.threshold = opts.threshold ?? 8;
     this.press = null; this.fallback = null; this.nativeActive = false;
   }
-  log(...a) { console.info("[AI Folders]", ...a); }
+  log(...a) { console.info("[SI Folders]", ...a); }
   /* Route-scoped adapters (Grok on X): stay inert outside the adapter's route so the rest of X is untouched. */
   active() { if (!this.adapter.routeScoped) return true; try { return this.adapter.matches(location); } catch (_) { return false; } }
   /* Conversation link for an event (composedPath handles shadow DOM / nested spans). */

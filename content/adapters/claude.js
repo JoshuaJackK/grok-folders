@@ -10,4 +10,4 @@ GF.registerAdapter(GF.makeAdapter({
   tabTitleRe: /\s*[-|–]\s*Claude\s*$/i,                  // GUESS: "<title> - Claude"
   placeholders: /^(new chat|new conversation|claude|untitled)$/i // GUESS
 }));
-} catch (e) { console.error("[AI Folders] adapter failed to load: claude.js", e); }
+} catch (e) { console.error("[SI Folders] adapter failed to load: claude.js", e); }

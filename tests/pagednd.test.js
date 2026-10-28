@@ -56,7 +56,7 @@ function boot(url, body) {
     p.dropOnFolder(dt2); await tick();
     assert.deepStrictEqual(p.assigns().map(x => [x.provider, x.convId, x.title, x.folderId]),
       [["chatgpt", "6710-aaa", "GPT Title", "F"], ["chatgpt", "6710-bbb", "Custom GPT chat", "F"]]);
-    assert.ok(p.logs.some(l => l.includes("[AI Folders] dragstart detected chatgpt:6710-aaa")));
+    assert.ok(p.logs.some(l => l.includes("[SI Folders] dragstart detected chatgpt:6710-aaa")));
     console.log("PASS chatgpt: draggable=false + site stopPropagation + /g/.../c/");
   }
 

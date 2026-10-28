@@ -36,4 +36,4 @@ GF.registerAdapter(GF.makeAdapter({
   tabTitleRe: /^\s*\(\d+\+?\)\s*|\s*\/\s*(X|Twitter)\s*$/gi,     // GUESS: "(3) <title> / X" -> "<title>"
   placeholders: /^(grok|x|twitter|home|new chat|new conversation|untitled|chat history|history|novi klepet|nov pogovor)$/i // GUESS
 }));
-} catch (e) { console.error("[AI Folders] adapter failed to load: grokx.js", e); }
+} catch (e) { console.error("[SI Folders] adapter failed to load: grokx.js", e); }

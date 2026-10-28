@@ -10,4 +10,4 @@ GF.registerAdapter(GF.makeAdapter({
   tabTitleRe: /\s*[-|–]\s*Perplexity(\s+AI)?\s*$/i,     // GUESS
   placeholders: /^(perplexity|perplexity ai|new thread|untitled)$/i // GUESS
 }));
-} catch (e) { console.error("[AI Folders] adapter failed to load: perplexity.js", e); }
+} catch (e) { console.error("[SI Folders] adapter failed to load: perplexity.js", e); }

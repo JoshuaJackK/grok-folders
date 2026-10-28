@@ -1,4 +1,4 @@
-# AI Folders (Firefox) – prej „Grok Folders“
+# SI Folders (Firefox) – prej „Grok Folders“
 
 Razširitev za Firefox (Manifest V3), ki pogovore z AI asistenti razvrsti v **eno skupno drevo map** (po temah) z neomejenim gnezdenjem.
 
@@ -80,7 +80,7 @@ Selektorji v `content/adapters/grok.js` (`a[href^="/c/"]`, naslov) **niso prever
 V Firefoxu MV3 je dostop do strani **izbiren**: ob posodobitvi se nove strani ne odobrijo samodejno in brez dostopa se vsebinski skript ne naloži (ni gumba 📁). Zato:
 - ob namestitvi/posodobitvi se, če kakšna stran manjka, odpre stran `ui/permissions.html` s stanjem in gumbom **Grant access**;
 - gumb razširitve v orodni vrstici (z rdečim „!“, če kaj manjka) zahteva manjkajoči dostop; ko je vse odobreno, odpre stran s stanjem;
-- ročno: `about:addons` → AI Folders → Permissions. Po odobritvi znova naloži odprte zavihke.
+- ročno: `about:addons` → SI Folders → Permissions. Po odobritvi znova naloži odprte zavihke.
 - **0.5.3 doda x.com in twitter.com** (Grok v X): Firefox ob posodobitvi MV3 razširitve novih strani ne odobri in ne vpraša (bug 1893232) – posodobitev se namesti tiho, prikaže se „!“ na gumbu in odpre se `ui/permissions.html`; dostop odobriš s klikom na gumb ali v `about:addons`.
 
 ## Namestitev (about:debugging)

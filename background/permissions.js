@@ -32,7 +32,7 @@ GF.Perms = {
     this.lastMissing = n;
     await browser.action.setBadgeText({ text: n ? "!" : "" });
     if (n && browser.action.setBadgeBackgroundColor) await browser.action.setBadgeBackgroundColor({ color: "#e5484d" });
-    await browser.action.setTitle({ title: n ? `AI Folders – click to grant access to ${n} site(s)` : "AI Folders" });
+    await browser.action.setTitle({ title: n ? `SI Folders – click to grant access to ${n} site(s)` : "SI Folders" });
   }
 };
 browser.runtime.onInstalled.addListener((d) => { GF.Perms.onInstalled(d); GF.Perms.updateBadge(); });

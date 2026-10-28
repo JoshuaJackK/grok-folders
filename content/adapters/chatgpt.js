@@ -10,4 +10,4 @@ GF.registerAdapter(GF.makeAdapter({
   tabTitleRe: /\s*[-|–]\s*ChatGPT\s*$/i,                 // GUESS: tab title is "<title>" (or "ChatGPT")
   placeholders: /^(new chat|chatgpt|untitled)$/i         // GUESS
 }));
-} catch (e) { console.error("[AI Folders] adapter failed to load: chatgpt.js", e); }
+} catch (e) { console.error("[SI Folders] adapter failed to load: chatgpt.js", e); }

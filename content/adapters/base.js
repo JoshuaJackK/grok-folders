@@ -32,7 +32,7 @@ var GF = globalThis.GF;
 GF.adapters = GF.adapters || [];
 GF.registerAdapter = (a) => { if (a && a.id) GF.adapters.push(a); return a; };
 /* Robust: a broken adapter must not prevent others from matching. */
-GF.pickAdapter = () => GF.adapters.find(a => { try { return a.matches(location); } catch (e) { console.warn("[AI Folders] adapter error", a && a.id, e); return false; } }) || null;
+GF.pickAdapter = () => GF.adapters.find(a => { try { return a.matches(location); } catch (e) { console.warn("[SI Folders] adapter error", a && a.id, e); return false; } }) || null;
 GF.adapterById = (id) => GF.adapters.find(a => a.id === id) || null;
 /* Parse any supported conversation URL (used for drops from other sites/windows). */
 GF.parseAnyUrl = (url) => {

@@ -40,7 +40,7 @@ GF.Sidebar = class {
     const style = document.createElement("style");
     style.textContent = GF.Sidebar.CSS;
     this.root.appendChild(style);
-    this.toggle = this.el("button", { className: "toggle", title: "AI Folders", textContent: "📁" });
+    this.toggle = this.el("button", { className: "toggle", title: "SI Folders", textContent: "📁" });
     this.panel = this.el("div", { className: "panel" });
     this.root.append(this.toggle, this.panel);
     this.pos = { left: GF_POS.left, top: GF_POS.top };
@@ -245,7 +245,7 @@ GF.Sidebar = class {
     if (this.tagFilter && !this.state.tags[this.tagFilter]) this.tagFilter = null;
     this.mode = mode || this.mode; this.render(); if (this.live) this.preserving(this.live);
   }
-  async call(type, payload) { const r = await this.api(type, payload); if (!r.ok) alert("AI Folders: " + r.error); return r; }
+  async call(type, payload) { const r = await this.api(type, payload); if (!r.ok) alert("SI Folders: " + r.error); return r; }
 
   children(pid) { return Object.values(this.state.folders).filter(f => f.parentId === pid).sort((a, b) => a.order - b.order || a.name.localeCompare(b.name)); }
   convsIn(fid) { return Object.values(this.state.convs).filter(c => c.folderId === fid).sort((a, b) => (a.order || 0) - (b.order || 0) || a.title.localeCompare(b.title)); }
@@ -295,7 +295,7 @@ GF.Sidebar = class {
     this.tree = this.el("div", { className: "tree" });
     const footer = this.el("div", { className: "footer", textContent: "storage: " + this.mode });
     const hb = (t, title, fn) => { const b = this.el("button", { className: "mini hbtn", textContent: t, title }); b.onclick = fn; return b; };
-    const head = this.el("div", { className: "head" }, this.el("b", { textContent: "AI Folders" }),
+    const head = this.el("div", { className: "head" }, this.el("b", { textContent: "SI Folders" }),
       hb("⊟", "Collapse all folders", () => this.collapseAll()),
       hb("⊞", "Expand all folders", () => this.expandAll()),
       hb("⚙", "Settings (font)", () => this.openSettings()));
@@ -434,7 +434,7 @@ GF.Sidebar = class {
     }
     // External drop: a conversation link from a site sidebar (annotated by content/dnd.js) or any supported AI URL.
     const info = GF.Sidebar.infoFromDataTransfer(dt, this.adapter);
-    if (!info) { console.info("[AI Folders] drop ignored: no conversation URL in", [...(dt.types || [])]); return; }
+    if (!info) { console.info("[SI Folders] drop ignored: no conversation URL in", [...(dt.types || [])]); return; }
     return this.dropExternal(info, target);
   }
 
@@ -443,7 +443,7 @@ GF.Sidebar = class {
     if (!target || target.type === "root") return;
     const folderId = target.type === "folder" ? target.id : target.folderId;
     const pos = target.type === "conv" ? { targetKey: target.key, position: target.position } : {};
-    console.info("[AI Folders] add", info.provider + ":" + info.convId, "->", folderId);
+    console.info("[SI Folders] add", info.provider + ":" + info.convId, "->", folderId);
     return this.call(GF.MSG.ASSIGN_CONV, { provider: info.provider, convId: info.convId, title: info.title || info.convId, folderId, ...pos });
   }
 
@@ -487,7 +487,7 @@ GF.Sidebar = class {
     let data;
     try { data = JSON.parse(await file.text()); } catch (e) { return this.dialog("Invalid JSON: " + e.message, [["OK", null]]); }
     if (!data || data.app !== "grok-folders" || !Array.isArray(data.folders) || !Array.isArray(data.conversations))
-      return this.dialog("This is not an AI Folders export file.", [["OK", null]]);
+      return this.dialog("This is not an SI Folders export file.", [["OK", null]]);
     const mode = await this.dialog(
       `Import ${data.folders.length} folders and ${data.conversations.length} conversations from "${file.name}".\n` +
       "Replace: delete current data first. Merge: keep existing, add only new folders/conversations (safe to repeat).",
