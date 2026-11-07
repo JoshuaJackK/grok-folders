@@ -12,12 +12,21 @@ Podprte strani (vsaka ima svoj adapter v `content/adapters/`):
 | Claude | claude.ai | `/chat/<uuid>` | Cl |
 | Gemini | gemini.google.com | `/app/<id>`, `/u/<n>/app/<id>` | Gm |
 | Perplexity | www.perplexity.ai | `/search/<slug>` | Px |
+| Kimi (Moonshot) | kimi.ai, www.kimi.ai, kimi.com, www.kimi.com, kimi.moonshot.cn | `/chat/<id>` → `kimi:<id>` | Km |
+| DeepSeek | chat.deepseek.com | `/a/chat/s/<id>` → `deepseek:<id>` | DS |
 
 ⚠️ Vzorci URL so preverjeni po javnih virih; **selektorji, formati naslovov zavihkov in nadomestni naslovi so ugibanja** (označeno v vsakem adapterju). Klik na pogovor iste strani = navigacija znotraj aplikacije; pogovor drugega ponudnika se odpre v novem zavihku. Filter „All AIs“ omeji prikaz na enega ponudnika.
 
 **Grok v X** (`content/adapters/grokx.js`, ponudnik `grokx`): pogovori imajo **lasten prostor id‑jev** (`grokx:<id>`), ločen od grok.com. Id je v poizvedbi (`?conversation=`), ne v poti. Ker je X ena sama SPA, se skript naloži na celem x.com, a plošča 📁 se prikaže **samo na `/i/grok`** (preverjanje ob SPA navigaciji); drugje na X ni gumba, vlečenje in posodabljanje naslovov sta neaktivna in DOM X ostane nedotaknjen. Klik na shranjen pogovor uporabi Xovo povezavo v zgodovini (če obstaja), sicer naloži URL. ⚠️ Selektorji zgodovine (`a[href*="/i/grok?conversation="]`), naslova in format naslova zavihka („… / X“) so ugibanje. Gecko id ostaja `grok-folders@joshuajackk.github.io`.
 
 **Skupni id‑ji (0.5.5):** X in grok.com uporabljata iste UUID id‑je (`grok.com/c/<uuid>` = `x.com/i/grok?conversation=<uuid>`), zato je tak pogovor shranjen **enkrat** kot `grok:<uuid>` (male črke, kot na grok.com) z značko Gk. Klik nanj na X ga odpre znotraj X (prek Xove povezave v zgodovini, sicer prek URL‑ja X), na grok.com na grok.com, drugje v novem zavihku na grok.com. Ob nalaganju se obstoječi `grokx:<uuid>` samodejno pretvorijo v `grok:<uuid>`; če obstajata oba, se združita (en vnos, boljši naslov, unija oznak). Ker je pogovor v tem modelu vedno v **eni** mapi, ob združevanju iz različnih map ostane mapa vnosa `grok:`. Enako normalizacijo uporablja uvoz JSON. Številčni id‑ji X ostanejo `grokx:<id>` (GX).
+
+## Kimi in DeepSeek: preverjanje javnih virov
+- Kimi: [javni userscript s parserjem `/chat/<id>` in gostiteljema www.kimi.com / kimi.moonshot.cn](https://greasyfork.org/en/scripts/603882/code), [javni userscript z domenami kimi.ai / www.kimi.com](https://greasyfork.org/en/scripts/591228/code).
+- Preverjeno s `curl -I` (7. 11. 2026): https://kimi.ai → https://www.kimi.ai/ (302, nato 200), **ne** kimi.com; https://kimi.com in https://kimi.moonshot.cn → https://www.kimi.com/ (302). Zato dovoljenja vključujejo tudi www.kimi.ai. Isti id na teh gostiteljih ima isti ključ `kimi:<id>`; odpiranje iz drugega ponudnika uporabi www.kimi.com.
+- DeepSeek: [javni opis pridobitve id iz `/a/chat/s/<id>`](https://github.com/theAbdoSabbagh/DeeperSeek/blob/main/docs/README.md), [implementacija z URL-jem pogovora](https://github.com/Map9876/DeepSeek-backup-web). Kanonični URL je `https://chat.deepseek.com/a/chat/s/<id>`.
+- **Brez prijave ni preverjen živi DOM**: selektorji povezav/`span`, oblika naslova zavihka in nadomestni naslovi so UNVERIFIED (označeno v adapterjih). Odprti pogovor se zazna iz URL-ja, naslov pa iz besedila povezave ali zavihka; če ga ni, se uporabi id. Preizkusi uporabljajo sintetični DOM, ne potrjujejo žive stranske vrstice. Ne podpiramo ugibanih drugih poti (npr. Kimi `/kimiplus/`).
+- Obstoječa shramba, shema in ključi drugih ponudnikov ostanejo nespremenjeni. Nova dovoljenja je treba odobriti in zavihke znova naložiti.
 
 ## Funkcije (MVP)
 - Gumb 📁 lahko premakneš z miško (položaj se shrani lokalno v `storage.local` pod `uiPos`); dvoklik ga ponastavi.
@@ -44,7 +53,7 @@ background/storage.js    model shranjevanja: kodiranje, razkosanje, migracije, f
 background/background.js EDINI lastnik shrambe; obdela sporočila, oddaja spremembe zavihkom,
                          posluša storage.onChanged (sync iz drugih naprav)
 content/adapters/base.js vmesnik ponudnika (provider adapter) + registracija
-content/adapters/*.js    GF.makeAdapter (base.js) + konfiguracija za grok, grokx (Grok v X), chatgpt, claude, gemini, perplexity
+content/adapters/*.js    GF.makeAdapter (base.js) + konfiguracija za grok, grokx (Grok v X), chatgpt, claude, gemini, perplexity, kimi, deepseek
 content/dnd.js           vlečenje pogovorov iz stranske vrstice strani (native DnD v capture fazi + pointer fallback)
 content/titles.js        samodejno posodabljanje naslovov (TitleWatcher)
 content/sidebar.js       UI v zaprtem shadow rootu (brez innerHTML)

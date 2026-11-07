@@ -17,6 +17,10 @@ const CASES = {
     paths: { "/app/5f2a": "5f2a", "/u/2/app/5f2a": "5f2a", "/app": null, "/share/x": null }, urlFor: ["5f2a", "https://gemini.google.com/app/5f2a"] },
   perplexity: { url: "https://www.perplexity.ai/search/how-to-x-AbC123", tab: "How to X - Perplexity", links: [["/search/what-is-y-Zz9", "What is Y"], ["/library", "Library"]],
     paths: { "/search/how-to-x-AbC123": "how-to-x-AbC123", "/discover": null }, urlFor: ["s-1", "https://www.perplexity.ai/search/s-1"] },
+  kimi: { url: "https://www.kimi.com/chat/d123abc", tab: "Kimi topic - Kimi", links: [["/chat/d456def", "Kimi one"], ["/chat/new123", "New chat"]],
+    paths: { "/chat/d123abc": "d123abc", "/chat/d123abc/?x=1": "d123abc", "/": null, "/chat/": null, "/kimiplus/abc": null, "/chat/a/b": null, "/chat/a%20b": null }, urlFor: ["d123abc", "https://www.kimi.com/chat/d123abc"] },
+  deepseek: { url: "https://chat.deepseek.com/a/chat/s/749e6bbd-6a45-4440-beaa-ae5238bf06d8", tab: "DeepSeek topic - DeepSeek", links: [["/a/chat/s/96e8ca3e-b5be-4345-841f-1b0ff21752b9", "DeepSeek one"], ["/a/chat/s/new123", "New chat"]],
+    paths: { "/a/chat/s/749e6bbd-6a45-4440-beaa-ae5238bf06d8": "749e6bbd-6a45-4440-beaa-ae5238bf06d8", "/a/chat/s/abc/?x=1": "abc", "/a/chat/s/": null, "/chat/abc": null, "/a/chat/s/abc/extra": null, "/a/chat/s/a%2Fb": null, "/": null }, urlFor: ["749e6bbd-6a45-4440-beaa-ae5238bf06d8", "https://chat.deepseek.com/a/chat/s/749e6bbd-6a45-4440-beaa-ae5238bf06d8"] },
   grokx: { url: "https://x.com/i/grok?conversation=1990017815781278167", tab: "(3) Current X chat / X",
     links: [["/i/grok?conversation=111111", "X one"], ["https://twitter.com/i/grok?conversation=333333", "Tw three"], ["/i/grok?conversation=222222", "Grok"],
       ["/i/grok?conversation=5d1f0a2e-0b7c-4c1e-9a55-2f6f7a1b9c00", "UUID chat"], ["/home", "Home"], ["/i/grok", "New chat"]],
@@ -28,6 +32,8 @@ const CASES = {
     urlFor: ["124e3867-8ba5-476d-aa9a-0395edd41b65", "https://x.com/i/grok?conversation=124e3867-8ba5-476d-aa9a-0395edd41b65"], rt: "987654321" }
 };
 const EXPECT_TITLES = {
+  kimi: { d456def: "Kimi one", d123abc: "Kimi topic" },
+  deepseek: { "96e8ca3e-b5be-4345-841f-1b0ff21752b9": "DeepSeek one", "749e6bbd-6a45-4440-beaa-ae5238bf06d8": "DeepSeek topic" },
   grok: { g1: "Grok one", "g-cur": "Current Grok chat" },
   chatgpt: { "6710-a": "GPT one", "6710-b": "GPT two", "6710-cur": "Current GPT chat" },
   claude: { "0b1c-a": "Claude one", "0b1c-cur": "Current Claude chat" },
@@ -75,6 +81,18 @@ const emptyState = { folders: {}, convs: {}, tags: {} };
     // round trip: URL built by adapter is parsed back by GF.parseAnyUrl
     const rt = c.rt || "zz-1";
     assert.deepStrictEqual(JSON.parse(JSON.stringify(w.GF.parseAnyUrl(a.conversationUrl(rt)))), { provider: id, convId: rt });
+    if (["kimi", "deepseek"].includes(id)) {
+      assert.strictEqual(w.GF.canonKey(cur.provider + ":" + cur.convId), id + ":" + cur.convId, "provider key");
+      for (const host of a.hosts) {
+        assert.ok(a.matches(new URL("https://" + host + "/")), host + " matches");
+        assert.deepStrictEqual(JSON.parse(JSON.stringify(w.GF.parseAnyUrl("https://" + host + new URL(c.url).pathname + "?x=1#fragment"))), { provider: id, convId: cur.convId });
+        assert.ok(manifest.host_permissions.includes("https://" + host + "/*"));
+      }
+      assert.strictEqual(w.GF.parseAnyUrl("https://evil.example" + new URL(c.url).pathname), null);
+      assert.strictEqual(a.currentConversation().title, id === "kimi" ? "Kimi topic" : "DeepSeek topic");
+      w.document.title = a.label; w.document.querySelector("nav").remove();
+      assert.strictEqual(a.currentConversation().title, cur.convId, "URL-only fallback");
+    }
     w.close();
     console.log("PASS adapter " + id);
   }

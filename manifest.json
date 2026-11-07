@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "SI Folders",
   "version": "0.5.6",
-  "description": "Organize AI chat conversations (Grok, Grok on X, ChatGPT, Claude, Gemini, Perplexity) into nested folders with tags.",
+  "description": "Organize AI chat conversations (Grok, Grok on X, ChatGPT, Claude, Gemini, Perplexity, Kimi, DeepSeek) into nested folders with tags.",
   "browser_specific_settings": {
     "gecko": {
       "id": "grok-folders@joshuajackk.github.io",
@@ -26,7 +26,13 @@
     "https://www.perplexity.ai/*",
     "https://perplexity.ai/*",
     "https://x.com/*",
-    "https://twitter.com/*"
+    "https://twitter.com/*",
+    "https://kimi.ai/*",
+    "https://www.kimi.ai/*",
+    "https://kimi.com/*",
+    "https://www.kimi.com/*",
+    "https://kimi.moonshot.cn/*",
+    "https://chat.deepseek.com/*"
   ],
   "background": {
     "scripts": [
@@ -46,7 +52,13 @@
         "https://www.perplexity.ai/*",
         "https://perplexity.ai/*",
         "https://x.com/*",
-        "https://twitter.com/*"
+        "https://twitter.com/*",
+        "https://kimi.ai/*",
+        "https://www.kimi.ai/*",
+        "https://kimi.com/*",
+        "https://www.kimi.com/*",
+        "https://kimi.moonshot.cn/*",
+        "https://chat.deepseek.com/*"
       ],
       "js": [
         "shared/constants.js",
@@ -57,6 +69,8 @@
         "content/adapters/claude.js",
         "content/adapters/gemini.js",
         "content/adapters/perplexity.js",
+        "content/adapters/kimi.js",
+        "content/adapters/deepseek.js",
         "content/sidebar.js",
         "content/titles.js",
         "content/dnd.js",
